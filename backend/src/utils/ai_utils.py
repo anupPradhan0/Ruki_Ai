@@ -2,6 +2,7 @@ from typing import Any, Optional
 import httpx
 from beanie import PydanticObjectId
 from src.config.settings import get_settings
+from src.utils.embed_utils import embed_text
 from src.utils.rag_utils import (
     retrieve_relevant_chunks,
     retrieve_relevant_history,
@@ -357,12 +358,15 @@ async def get_ai_advice(
     data = _extract_essential_fields(profile, user_type)
 
     rag_query = f"financial advice for a {user_type} with profile {data}"
-    chunks = await retrieve_relevant_chunks(rag_query, user_type=user_type)
+    # Embed once, reuse for both retrieval calls (saves an Ollama round-trip).
+    query_vec = await embed_text(rag_query)
+
+    chunks = await retrieve_relevant_chunks(query_vec=query_vec, user_type=user_type)
     context = format_context(chunks)
 
     history_context = ""
     if user_id is not None:
-        past = await retrieve_relevant_history(rag_query, user_id=user_id)
+        past = await retrieve_relevant_history(query_vec=query_vec, user_id=user_id)
         history_context = format_history_context(past)
 
     prompt = _build_advice_prompt(user_type, data, context=context, history_context=history_context)
@@ -388,16 +392,25 @@ async def get_ai_chat_response(
     Persists both the user message and assistant reply (with embeddings) so future
     turns can retrieve them as user-data RAG context.
     """
+    from src.config.settings import get_settings as _get_settings  # local import keeps top tidy
+    runtime_settings = _get_settings()
+
     settings = ai_settings or {"provider": "local", "model": "gemma4:e2b", "api_key": None}
     data = _extract_essential_fields(profile, user_type)
 
-    chunks = await retrieve_relevant_chunks(message, user_type=user_type)
-    context = format_context(chunks)
+    # Embed the user message ONCE. Reused for: knowledge RAG, user-data RAG,
+    # and the eventual `persist_chat_turn` call. Saves up to 2 Ollama hops/turn.
+    do_rag = bool(message) and len(message.strip()) >= runtime_settings.RAG_MIN_QUERY_CHARS
+    query_vec: list[float] = await embed_text(message) if do_rag else []
 
+    context = ""
     history_context = ""
-    if user_id is not None:
-        past = await retrieve_relevant_history(message, user_id=user_id)
-        history_context = format_history_context(past)
+    if query_vec:
+        chunks = await retrieve_relevant_chunks(query_vec=query_vec, user_type=user_type)
+        context = format_context(chunks)
+        if user_id is not None:
+            past = await retrieve_relevant_history(query_vec=query_vec, user_id=user_id)
+            history_context = format_history_context(past)
 
     messages: list = [
         {
@@ -424,7 +437,11 @@ async def get_ai_chat_response(
 
     if user_id is not None:
         try:
-            await persist_chat_turn(user_id, "user", message, user_type)
+            # Hand the precomputed user-message embedding to persist_chat_turn so it
+            # doesn't re-embed. Assistant reply still needs a fresh embed.
+            await persist_chat_turn(
+                user_id, "user", message, user_type, embedding=query_vec or None
+            )
             await persist_chat_turn(user_id, "assistant", reply, user_type)
         except Exception as exc:
             print(f"Chat persistence error: {exc}")
