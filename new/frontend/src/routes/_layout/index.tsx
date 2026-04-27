@@ -7,7 +7,7 @@ import SecuritySection from "@/components/sections/SecuritySection"
 import TestimonialsSection from "@/components/sections/TestimonialsSection"
 import CTASection from "@/components/sections/CTASection"
 
-export const Route = createFileRoute("/")({
+export const Route = createFileRoute("/_layout/")({
   component: HomePage,
 })
 

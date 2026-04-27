@@ -6,13 +6,10 @@ export default function LoginPage() {
   const [show, setShow] = useState(false)
 
   return (
-    <div className="min-h-[80vh] flex items-center justify-center px-4 py-16">
+    <div className="flex items-center justify-center px-4 py-16">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
-          <Link to="/" className="text-3xl font-bold">
-            Ruki<span className="text-[#FFD700]">AI</span>
-          </Link>
-          <h1 className="text-2xl font-bold mt-6 mb-2">Welcome back</h1>
+          <h1 className="text-2xl font-bold mb-2">Welcome back</h1>
           <p className="text-white/50 text-sm">Log in to your RukiAI account</p>
         </div>
 
