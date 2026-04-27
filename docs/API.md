@@ -42,6 +42,9 @@ try-it-out is at **http://localhost:8000/docs** while the backend is running.
 | GET | `/dashboard/unemployed` | ✅ | Get unemployed dashboard with AI advice |
 | GET | `/dashboard/retired` | ✅ | Get retired dashboard with AI advice |
 | POST | `/dashboard/guest` | — | Submit guest profile data |
+| **GET** | **`/ai-settings/providers`** | ✅ | **List supported AI providers + models** |
+| **GET** | **`/ai-settings`** | ✅ | **Get current user's AI provider/model** |
+| **POST** | **`/ai-settings`** | ✅ | **Update user's provider, model, and API key** |
 | POST | `/submit-feedback` | — | Save public feedback |
 | GET | `/api/feedback` | — | List recent feedback |
 
@@ -283,12 +286,18 @@ dashboard call regenerates with the quiz signal included.
 
 ## AI chat
 
-Conversational follow-up powered by Cohere `command-r-plus`'s chat API.
-The backend injects the user's profile (and quiz answers) as a preamble,
-so each reply is grounded in their real data.
+Conversational follow-up powered by the user's selected AI provider
+(Local Gemma by default, or Gemini / OpenAI / Anthropic / Cohere if they
+opted into one in `/dashboard/settings`). The backend injects the user's
+profile, self-assessment, and two RAG blocks (curated finance knowledge
++ this user's relevant past turns) as a system preamble, so each reply
+is grounded in their real data plus factual context.
 
-No persistence on the server — the frontend keeps the conversation in
-component state and sends the full history on each turn.
+Every turn (user message + assistant reply) is **persisted** to the
+`chat_messages` collection with an embedding so future conversations can
+retrieve them. The frontend still keeps the in-flight conversation in
+component state and sends the full history on each turn — server-side
+RAG augments that with semantically relevant older turns automatically.
 
 ### `POST /chat/{user_type}` 🔒
 
@@ -397,6 +406,88 @@ Submit guest profile data. No JWT required.
 ---
 
 ## Feedback
+
+## AI settings
+
+Each user picks the AI provider they want to use. Default is `local`
+(Ollama running Gemma 4 E2B) — no key needed, no data leaves the server.
+Other providers require the user's own API key.
+
+### `GET /ai-settings/providers` 🔒
+
+List the supported providers and their available models. Used by the
+Settings page to render the provider/model picker.
+
+**Response — 200**
+```json
+{
+  "providers": [
+    {
+      "id": "local",
+      "label": "Local (Ollama)",
+      "models": ["gemma4:e2b", "gemma4:e4b", "gemma3:1b"],
+      "needs_api_key": false
+    },
+    {
+      "id": "gemini",
+      "label": "Google Gemini",
+      "models": ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash"],
+      "needs_api_key": true
+    },
+    {
+      "id": "openai",
+      "label": "OpenAI",
+      "models": ["gpt-4o-mini", "gpt-4o", "gpt-5"],
+      "needs_api_key": true
+    },
+    {
+      "id": "anthropic",
+      "label": "Anthropic Claude",
+      "models": ["claude-haiku-4-5", "claude-sonnet-4-6", "claude-opus-4-7"],
+      "needs_api_key": true
+    },
+    {
+      "id": "cohere",
+      "label": "Cohere",
+      "models": ["command-a-03-2025", "command-r-plus", "command-r"],
+      "needs_api_key": true
+    }
+  ]
+}
+```
+
+### `GET /ai-settings` 🔒
+
+Returns the current user's saved provider and model, plus a `has_api_key`
+boolean so the UI can show "saved" without exposing the key itself.
+
+**Response — 200**
+```json
+{ "provider": "local", "model": "gemma4:e2b", "has_api_key": false }
+```
+
+### `POST /ai-settings` 🔒
+
+Update the user's AI provider, model, and (if needed) API key.
+
+**Request body**
+```json
+{
+  "provider": "openai",
+  "model": "gpt-4o-mini",
+  "api_key": "sk-..."
+}
+```
+
+- `api_key` is optional. Pass it the first time, or whenever rotating. Pass
+  `null` (or omit) to keep the previous one. Switching to a `local` provider
+  clears any saved key.
+- 400 if provider is unknown, model isn't valid for that provider, or a
+  cloud provider is chosen without ever setting a key.
+
+**Response — 200** — same shape as `GET /ai-settings`.
+
+---
 
 ### `POST /submit-feedback`
 

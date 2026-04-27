@@ -24,7 +24,8 @@ backend, frontend, and AI flows fit together.
 ```
 Sign up ──► /onboarding ──► /quiz ──► /dashboard
                                       ├── Overview (cards + AI advice)
-                                      └── AI Chat (sidebar)
+                                      ├── AI Chat (sidebar)
+                                      └── Settings (Info + AI provider)
 ```
 
 - **Sign up** sets a JWT cookie and stashes `{user_id, user_type}` in `localStorage`.
@@ -38,10 +39,11 @@ Sign up ──► /onboarding ──► /quiz ──► /dashboard
 1. **Just want to run it?** → [`GETTING_STARTED.md`](./GETTING_STARTED.md)
 2. **Building the frontend?** → [`API.md`](./API.md), then auto-generate types: `npx openapi-typescript http://localhost:8000/openapi.json -o src/types/api.ts`
 3. **Adding a new endpoint?** → [`ARCHITECTURE.md`](./ARCHITECTURE.md) (layers section + cheat sheet at bottom)
-4. **Working on the AI flows?** → [`ARCHITECTURE.md`](./ARCHITECTURE.md) → "AI advice & chat"
-5. **Curious about library choices?** → [`TECH_STACK.md`](./TECH_STACK.md)
+4. **Working on the AI / RAG flows?** → [`ARCHITECTURE.md`](./ARCHITECTURE.md) → "AI advice, chat & RAG"
+5. **Switching AI providers or fine-tuning prompts?** → [`ARCHITECTURE.md`](./ARCHITECTURE.md) → "Multi-provider AI"
+6. **Curious about library choices?** → [`TECH_STACK.md`](./TECH_STACK.md)
 
 ---
 
 If something here is wrong or stale, please open an issue. The docs reflect the
-codebase as of the quiz + chat additions (April 2026).
+codebase as of the local-AI + multi-provider + RAG additions (April 2026).

@@ -35,12 +35,27 @@ Every library used in this project, what it does, and why it was picked over alt
 - passlib provides a clean API on top
 - **Why pinned to bcrypt 4.0.1**: passlib breaks with bcrypt ≥ 4.1 due to a removed internal attribute
 
-### **cohere** — AI advice + chat
-- Official Cohere Python SDK (v5+)
-- Uses `command-r-plus` for both flows:
-  - **Advice** — `client.generate()` builds a one-shot prompt from profile + quiz answers (called by the dashboard endpoint, cached for 7 days)
-  - **Chat** — `client.chat()` with `chat_history` and a profile-aware `preamble` (called by `POST /chat/{type}`, no persistence)
-- **Why Cohere over OpenAI**: cheaper, has a generous free tier, trained for instruction-following
+### **httpx** — async HTTP client
+- Used for every AI provider call (Ollama, OpenAI, Anthropic, Gemini, Cohere) and the Ollama embeddings call
+- Async, drop-in `requests`-style API, supports HTTP/2
+- **Why over `requests`**: blocking; would stall the FastAPI event loop
+- **Why over each provider's SDK**: fewer pinned deps, simpler upgrade story, all providers go through the same dispatcher in `ai_utils.py`
+
+### **Ollama (external service, not a Python lib)** — local AI runtime
+- Runs Gemma 4 E2B for chat/advice and `nomic-embed-text` for embeddings
+- HTTP API at `localhost:11434` — no SDK lock-in
+- **Why over hugging-face transformers in-process**: single binary, GGUF model loading, optimised CPU inference, simpler ops
+- **Why local at all**: privacy. The default provider keeps every byte of profile/quiz/chat data on the user's own server. Cloud providers are opt-in per user.
+
+### **Gemma 4 E2B** — default chat model
+- Effective 2B params at inference (~7 GB on disk; runs in ~3 GB RAM at Q4)
+- Released April 2026 by Google DeepMind under Apache-2.0 — fine for commercial fine-tuning
+- **Why over Llama 3 / Mistral / Phi**: latest small model with strong reasoning + instruction-following at this size class. RAG closes the gap with much larger models for narrow tasks like financial advice.
+
+### **`nomic-embed-text`** — embedding model
+- 768-dim text embeddings via Ollama, ~280 MB
+- Great quality-per-byte, runs comfortably on CPU
+- **Why this and not a cloud embedding API**: same privacy reason as above. Even if a user picks OpenAI for chat, embeddings never leave the server.
 
 ### **aiosmtplib** — async email sending
 - Async SMTP client
@@ -79,7 +94,7 @@ Every library used in this project, what it does, and why it was picked over alt
 ### **TanStack Router** — file-based routing
 - Type-safe router with file-based route generation
 - Auto-generates `routeTree.gen.ts` based on `src/routes/` folder layout
-- Pathless layout groups (`_auth.tsx`) wrap login/signup/onboarding/quiz with the marketing Navbar; the dashboard sits **outside** that group so it owns its own chrome (Sidebar)
+- Pathless layout groups (`_auth.tsx`) wrap login/signup/onboarding/quiz with the marketing Navbar; the dashboard sits **outside** that group so it owns its own chrome (Sidebar) — and now has three children: `index` (overview), `chat`, and `settings`
 - **Why over React Router**: full type safety on route params, search params, navigation
 
 ### **TanStack Query** — server state management
@@ -111,6 +126,7 @@ Every library used in this project, what it does, and why it was picked over alt
 - Document database — fits well with profile-per-user-type design
 - Native JSON storage, indexes, TTL support
 - **Why over PostgreSQL**: profile shapes vary widely between user types; relational schemas would need many nullable columns or table-per-type joins
+- Embedding vectors are stored as `list[float]` on `knowledge_chunks` and `chat_messages`. Cosine similarity is computed in Python (brute-force, fine up to ~10k items). For larger scale, swap to MongoDB Atlas Vector Search.
 
 ---
 
@@ -119,6 +135,7 @@ Every library used in this project, what it does, and why it was picked over alt
 ### **Docker Compose**
 - Defines 3 services: `mongo`, `backend`, `frontend`
 - Healthchecks ensure backend waits for Mongo to be ready
+- Ollama is run on the host (or could be added as a 4th compose service if you prefer)
 - **Why over Kubernetes**: this is a single-machine project; k8s is overkill
 
 ### **nginx** (frontend container)
@@ -143,17 +160,37 @@ Inspired by clean architecture / DDD — every file has one reason to change.
 - Profile-specific queries stay fast (indexed by user_id)
 - Easy to add new user types without touching the User collection
 
+### **Privacy-first AI by default; cloud is opt-in per user**
+- Default `ai_provider = "local"` on every new User
+- A user must explicitly pick a cloud provider in `/dashboard/settings` and paste their own API key
+- Embeddings are *always* local, even when chat goes to a cloud provider — so RAG queries never leak to a third party
+
+### **Multi-provider via thin httpx wrappers, not SDKs**
+- Each provider gets a `_<provider>_chat()` function in `ai_utils.py` that hits its REST endpoint directly with httpx
+- One `_dispatch()` selects the right one based on user settings
+- No SDK pinning, no version conflicts, swapping providers is a 30-line addition
+
+### **Two RAG pipelines that share infrastructure**
+- **Knowledge RAG** retrieves from `knowledge_chunks` (curated finance facts), filtered by `user_type`
+- **User-data RAG** retrieves from `chat_messages` (this user's persisted turns), filtered by `user_id`
+- Both call the same `embed_text()` and `cosine_similarity()` helpers
+- Both inject their results into the same prompt builders (`_build_advice_prompt`, `_build_chat_system`)
+
 ### **AI advice 7-day cache (with quiz invalidation)**
-- Cohere takes ~2 seconds per call
+- Local Gemma takes 5–30 seconds per call on CPU
 - A user's spending pattern doesn't change daily
 - Cached advice on dashboard load = sub-100ms response time
-- Background refresh when the cache expires
-- Submitting the quiz wipes the cache so the next dashboard call re-runs Cohere with the new self-assessment signal mixed in
+- Submitting the quiz wipes the cache so the next dashboard call re-runs generation with the new self-assessment signal mixed in
 
-### **Stateless chat (no DB persistence)**
-- The frontend keeps the conversation in component state and re-sends the full `history` on every `/chat/{type}` call
-- Profile context is injected as a Cohere `preamble`, so each reply stays grounded in real data
-- No DB writes per turn → simpler, cheaper, and the user can refresh to start over
+### **Self-assessment as a first-class prompt block**
+- The 10 quiz answers used to be flattened into a generic profile blob
+- Now they're rendered as their own labeled section so the LLM weights them properly when generating advice
+- This was the cheapest, highest-leverage prompt change
+
+### **Stateless current-conversation, stateful long-term memory**
+- The current chat thread lives only in React state (frontend re-sends on every turn)
+- But every completed turn is *also* persisted server-side with an embedding
+- Future conversations retrieve those persisted turns via user-data RAG — the AI "remembers" without bloating every request
 
 ### **TTL indexes for guest data**
 - Guest sessions auto-expire after 2 days
