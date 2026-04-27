@@ -1,6 +1,14 @@
 from typing import Any, Optional
 import httpx
+from beanie import PydanticObjectId
 from src.config.settings import get_settings
+from src.utils.rag_utils import (
+    retrieve_relevant_chunks,
+    retrieve_relevant_history,
+    format_context,
+    format_history_context,
+    persist_chat_turn,
+)
 
 
 PROVIDERS: dict = {
@@ -84,19 +92,59 @@ def _extract_essential_fields(profile: Any, user_type: str) -> dict:
     return {k: v for k, v in data.items() if v is not None}
 
 
-def _build_advice_prompt(user_type: str, data: dict) -> str:
-    bullets = "\n".join(f"• {k}: {v}" for k, v in data.items())
+def _format_self_assessment(qa_list: Optional[list]) -> str:
+    """Render the 10-question self-assessment quiz answers as a labelled block."""
+    if not qa_list:
+        return ""
+    lines = []
+    for i, qa in enumerate(qa_list, 1):
+        q = (qa.get("q") or "").strip()
+        a = (qa.get("a") or "").strip()
+        if q and a:
+            lines.append(f"  Q{i}: {q}\n     → {a}")
+    if not lines:
+        return ""
+    return "\n".join(lines)
+
+
+def _build_advice_prompt(
+    user_type: str,
+    data: dict,
+    context: str = "",
+    history_context: str = "",
+) -> str:
+    # Self-assessment is its own block — pull it out so the AI weights it explicitly.
+    profile_data = {k: v for k, v in data.items() if k != "self_assessment"}
+    quiz_block_text = _format_self_assessment(data.get("self_assessment"))
+    quiz_block = (
+        f"\nSELF-ASSESSMENT (10-question quiz — anchor your advice in these answers):\n{quiz_block_text}\n"
+        if quiz_block_text
+        else ""
+    )
+
+    bullets = "\n".join(f"• {k}: {v}" for k, v in profile_data.items())
+    knowledge_block = (
+        f"\nRELEVANT FINANCIAL KNOWLEDGE (cite when applicable):\n{context}\n"
+        if context
+        else ""
+    )
+    history_block = (
+        f"\nPAST CONVERSATIONS WITH THIS USER (build on these, don't repeat):\n{history_context}\n"
+        if history_context
+        else ""
+    )
     return f"""Generate personalized financial advice for a {user_type}.
 
-DATA:
+PROFILE:
 {bullets}
-
+{quiz_block}{knowledge_block}{history_block}
 REQUIREMENTS:
 • Provide 5-7 specific, actionable recommendations
 • Focus on goal achievement and budget optimization
 • Include priority ranking (High/Medium/Low)
 • Use bullet points for clarity
 • Keep advice practical and measurable
+• Reference the self-assessment answers when they reveal a habit, attitude, or risk preference
 
 FORMAT:
 ## Priority Recommendations
@@ -110,12 +158,39 @@ FORMAT:
 Keep response concise and professional."""
 
 
-def _build_chat_system(user_type: str, data: dict) -> str:
+def _build_chat_system(
+    user_type: str,
+    data: dict,
+    context: str = "",
+    history_context: str = "",
+) -> str:
+    profile_data = {k: v for k, v in data.items() if k != "self_assessment"}
+    quiz_block_text = _format_self_assessment(data.get("self_assessment"))
+    quiz_block = (
+        f"\nSelf-assessment (use these to tailor every reply — they reveal the user's habits, "
+        f"risk appetite, and priorities):\n{quiz_block_text}\n"
+        if quiz_block_text
+        else ""
+    )
+    knowledge_block = (
+        f"\nReference these facts when relevant:\n{context}\n"
+        if context
+        else ""
+    )
+    history_block = (
+        f"\nRelevant past conversations with this user:\n{history_context}\n"
+        if history_context
+        else ""
+    )
     return (
         f"You are RukiAI, a personal finance advisor for a {user_type} user.\n"
-        f"Their profile data: {data}.\n"
-        "Give specific, actionable, numbers-backed advice. Keep replies concise "
-        "(under 200 words unless the user asks for detail). Use bullets when listing."
+        f"Their profile data: {profile_data}.\n"
+        f"{quiz_block}"
+        f"{history_block}"
+        f"{knowledge_block}"
+        "Give specific, actionable, numbers-backed advice grounded in the user's profile and "
+        "self-assessment. Keep replies concise (under 200 words unless the user asks for detail). "
+        "Use bullets when listing."
     )
 
 
@@ -262,11 +337,26 @@ async def _dispatch(ai_settings: dict, messages: list, temperature: float, max_t
 # ── Public API (signature-compatible with old gemma_utils) ───────────────────
 
 
-async def get_ai_advice(profile: Any, user_type: str, ai_settings: Optional[dict] = None) -> str:
-    """One-shot financial advice. ai_settings selects the provider/model/key."""
+async def get_ai_advice(
+    profile: Any,
+    user_type: str,
+    ai_settings: Optional[dict] = None,
+    user_id: Optional[PydanticObjectId] = None,
+) -> str:
+    """One-shot financial advice. Pulls knowledge RAG + this user's past chat history."""
     settings = ai_settings or {"provider": "local", "model": "gemma4:e2b", "api_key": None}
     data = _extract_essential_fields(profile, user_type)
-    prompt = _build_advice_prompt(user_type, data)
+
+    rag_query = f"financial advice for a {user_type} with profile {data}"
+    chunks = await retrieve_relevant_chunks(rag_query, user_type=user_type)
+    context = format_context(chunks)
+
+    history_context = ""
+    if user_id is not None:
+        past = await retrieve_relevant_history(rag_query, user_id=user_id)
+        history_context = format_history_context(past)
+
+    prompt = _build_advice_prompt(user_type, data, context=context, history_context=history_context)
     messages = [{"role": "user", "content": prompt}]
     try:
         text = await _dispatch(settings, messages, temperature=0.9, max_tokens=400)
@@ -282,12 +372,32 @@ async def get_ai_chat_response(
     history: list,
     message: str,
     ai_settings: Optional[dict] = None,
+    user_id: Optional[PydanticObjectId] = None,
 ) -> str:
-    """Conversational reply with profile-aware system prompt."""
+    """Conversational reply with profile + knowledge RAG + this user's history RAG.
+
+    Persists both the user message and assistant reply (with embeddings) so future
+    turns can retrieve them as user-data RAG context.
+    """
     settings = ai_settings or {"provider": "local", "model": "gemma4:e2b", "api_key": None}
     data = _extract_essential_fields(profile, user_type)
 
-    messages: list = [{"role": "system", "content": _build_chat_system(user_type, data)}]
+    chunks = await retrieve_relevant_chunks(message, user_type=user_type)
+    context = format_context(chunks)
+
+    history_context = ""
+    if user_id is not None:
+        past = await retrieve_relevant_history(message, user_id=user_id)
+        history_context = format_history_context(past)
+
+    messages: list = [
+        {
+            "role": "system",
+            "content": _build_chat_system(
+                user_type, data, context=context, history_context=history_context
+            ),
+        }
+    ]
     for h in history or []:
         content = h.get("content")
         if not content:
@@ -298,7 +408,16 @@ async def get_ai_chat_response(
 
     try:
         text = await _dispatch(settings, messages, temperature=0.7, max_tokens=500)
-        return text or "Sorry, I couldn't generate a reply."
+        reply = text or "Sorry, I couldn't generate a reply."
     except Exception as exc:
         print(f"AI chat error ({settings.get('provider')}): {exc}")
-        return "I'm having trouble responding right now. Please try again."
+        reply = "I'm having trouble responding right now. Please try again."
+
+    if user_id is not None:
+        try:
+            await persist_chat_turn(user_id, "user", message, user_type)
+            await persist_chat_turn(user_id, "assistant", reply, user_type)
+        except Exception as exc:
+            print(f"Chat persistence error: {exc}")
+
+    return reply

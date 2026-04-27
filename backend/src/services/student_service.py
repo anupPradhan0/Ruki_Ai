@@ -82,7 +82,7 @@ async def get_student_dashboard(user_id: PydanticObjectId) -> StudentDashboardRe
     )
 
     if stale:
-        advice = await get_ai_advice(student, "student", _ai_settings_from_user(user))
+        advice = await get_ai_advice(student, "student", _ai_settings_from_user(user), user_id=user_id)
         await update_student_ai_advice(student.id, advice)
         student.ai_advice = advice
 

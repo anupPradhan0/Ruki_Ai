@@ -9,6 +9,8 @@ class Settings(BaseSettings):
     JWT_EXPIRE_DAYS: int = 30
     OLLAMA_HOST: str = "http://localhost:11434"
     OLLAMA_MODEL: str = "gemma4:e2b"
+    OLLAMA_EMBED_MODEL: str = "nomic-embed-text"
+    RAG_TOP_K: int = 3
     SMTP_HOST: str = "smtp.gmail.com"
     SMTP_PORT: int = 465
     SMTP_USER: str

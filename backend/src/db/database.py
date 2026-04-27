@@ -10,6 +10,8 @@ from src.models.unemployed_model import UnemployedData
 from src.models.guest_model import Guest
 from src.models.guest_user_model import GuestUser
 from src.models.feedback_model import Feedback
+from src.models.knowledge_model import KnowledgeChunk
+from src.models.chat_message_model import ChatMessage
 
 
 async def init_db() -> None:
@@ -26,5 +28,7 @@ async def init_db() -> None:
             Guest,
             GuestUser,
             Feedback,
+            KnowledgeChunk,
+            ChatMessage,
         ],
     )
