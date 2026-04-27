@@ -461,6 +461,41 @@ export const api = {
         history,
       }),
     }),
+
+  getAiProviders: () => request<AiProvidersResponse>("/ai-settings/providers"),
+
+  getAiSettings: () => request<AiSettings>("/ai-settings"),
+
+  updateAiSettings: (data: AiSettingsUpdate) =>
+    request<AiSettings>("/ai-settings", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+}
+
+// ── AI settings types ────────────────────────────────────────────────────
+
+export interface AiProvider {
+  id: string
+  label: string
+  models: string[]
+  needs_api_key: boolean
+}
+
+export interface AiProvidersResponse {
+  providers: AiProvider[]
+}
+
+export interface AiSettings {
+  provider: string
+  model: string
+  has_api_key: boolean
+}
+
+export interface AiSettingsUpdate {
+  provider: string
+  model: string
+  api_key?: string | null
 }
 
 export interface QuizAnswer {

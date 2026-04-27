@@ -14,6 +14,9 @@ class User(Document):
     phone_number: Optional[str] = Field(default=None, max_length=20)
     currency: Currency = Currency.INR
     user_type: Optional[UserType] = None
+    ai_provider: str = "local"
+    ai_model: str = "gemma4:e2b"
+    ai_api_key: Optional[str] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 
