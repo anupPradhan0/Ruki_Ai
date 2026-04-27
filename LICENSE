@@ -19,3 +19,100 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+================================================================================
+THIRD-PARTY NOTICES & ACKNOWLEDGEMENTS
+================================================================================
+
+The MIT License above applies only to the RukiAI source code in this
+repository. The components listed below are NOT covered by it; they are
+distributed by their respective owners under their own terms. Users and
+redistributors of RukiAI must comply with each of those terms separately.
+
+---
+
+AI MODELS
+---------
+
+Gemma 4 (E2B / E4B / 26B MoE / 31B Dense)
+  Owner:    Google LLC / Google DeepMind
+  License:  Apache License 2.0 (per the official release, April 2026)
+  Source:   https://ai.google.dev/gemma
+            https://huggingface.co/google
+  Notice:   RukiAI ships NO Gemma weights. The model is downloaded by the
+            operator via `ollama pull gemma4:e2b`. Use of the model is
+            subject to Google's licensing and any acceptable-use policy
+            applicable to it at the time of download.
+
+nomic-embed-text
+  Owner:    Nomic AI
+  License:  Apache License 2.0
+  Source:   https://huggingface.co/nomic-ai/nomic-embed-text-v1.5
+  Notice:   Used as the default RAG embedding model. Pulled at runtime via
+            Ollama; not redistributed in this repository.
+
+OPTIONAL CLOUD PROVIDERS
+------------------------
+
+If a user opts in via /dashboard/settings, RukiAI calls one of the
+following hosted APIs with that user's own API key. RukiAI itself does not
+distribute, embed, or modify any of these services or models — it is only
+a client. Use is subject to each provider's terms of service.
+
+  - Google Gemini             https://ai.google.dev/gemini-api/terms
+  - OpenAI                    https://openai.com/policies
+  - Anthropic Claude          https://www.anthropic.com/legal
+  - Cohere                    https://cohere.com/terms
+
+RUNTIME / TOOLING
+-----------------
+
+Ollama
+  Owner:    Ollama, Inc.
+  License:  MIT License
+  Source:   https://github.com/ollama/ollama
+  Notice:   Required external service for the default local AI provider.
+            Installed by the operator; not bundled with RukiAI.
+
+KEY OPEN-SOURCE DEPENDENCIES
+----------------------------
+
+The Python and JavaScript packages listed in `backend/requirements.txt`
+and `frontend/package.json` are used under their respective open-source
+licenses. A non-exhaustive summary:
+
+  Backend (Python)
+    - FastAPI                 MIT       https://github.com/tiangolo/fastapi
+    - Beanie                  Apache-2  https://github.com/BeanieODM/beanie
+    - Pydantic / pydantic-settings   MIT
+    - Motor / PyMongo         Apache-2  https://www.mongodb.com/docs/drivers/
+    - python-jose             MIT
+    - passlib + bcrypt        BSD / Apache-2
+    - httpx                   BSD-3-Clause
+    - aiosmtplib              MIT
+    - uvicorn                 BSD-3-Clause
+
+  Frontend (JavaScript / TypeScript)
+    - React                   MIT
+    - Vite                    MIT
+    - TanStack Router / Query MIT
+    - TypeScript              Apache-2
+    - Tailwind CSS            MIT
+    - lucide-react            ISC
+    - Radix UI primitives     MIT
+
+  Database
+    - MongoDB Community Server  Server Side Public License (SSPL) v1
+                                — used as an external service; not bundled
+
+For the authoritative license text of each package, see its source repository
+or the corresponding `LICENSE` file in your installed `node_modules` /
+`site-packages` tree.
+
+---
+
+If you redistribute RukiAI as a product, you are responsible for:
+  1. Preserving the MIT notice above for the project source code.
+  2. Reviewing and complying with each third-party license listed here
+     (and any others added later).
+  3. Not removing or altering the third-party notices in this file.
