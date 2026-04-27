@@ -38,5 +38,5 @@ async def chat_with_ai(user_type: str, data: ChatRequest) -> ChatResponse:
     ai_settings = _ai_settings_from_user(user) if user else None
 
     history = [t.model_dump() for t in data.history]
-    reply = await get_ai_chat_response(profile, user_type, history, data.message, ai_settings)
+    reply = await get_ai_chat_response(profile, user_type, history, data.message, ai_settings, user_id=user_id)
     return ChatResponse(reply=reply)

@@ -13,16 +13,20 @@ Three ways to run the project: Docker (everything together), local Python + Dock
 | **Node.js** | 20+ | Frontend |
 | **pnpm** | 10+ | Frontend package manager |
 | **MongoDB** | 7+ | Database (or use Docker) |
+| **Ollama** | latest | Local AI runtime (Gemma 4 + embeddings) — install on the host that runs the backend |
 
-You'll also need API keys for:
-- **Cohere AI** — https://dashboard.cohere.com (for AI advice)
-- **Gmail App Password** — https://myaccount.google.com/apppasswords (for the contact form, optional)
+You only need a cloud AI key if you (or specific users) want to switch the
+provider in `/dashboard/settings` to Gemini / OpenAI / Anthropic / Cohere.
+By default, RukiAI runs entirely on your own machine via Ollama — no key.
+
+Optional:
+- **Gmail App Password** — https://myaccount.google.com/apppasswords (for the contact form)
 
 ---
 
-## Setup 1 — Docker Compose (recommended)
+## Setup 1 — Docker Compose + Ollama on host
 
-Runs all 3 services (mongo + backend + frontend) in containers.
+The compose stack runs Mongo + backend + frontend. Ollama runs on the host.
 
 ### Step 1 — Configure environment
 
@@ -30,13 +34,19 @@ Runs all 3 services (mongo + backend + frontend) in containers.
 cp backend/.env.example backend/.env
 ```
 
-Edit `backend/.env` and fill in:
+Edit `backend/.env`:
 
 ```env
-mongo_uri=mongodb://admin:changeme@mongo:27017     # IMPORTANT: 'mongo' not 'localhost'
+mongo_uri=mongodb://admin:changeme@mongo:27017     # IMPORTANT: 'mongo' not 'localhost' inside docker
 db_name=rukiai
 jwt_secret=<a-long-random-secret>
-cohere_api_key=<your-cohere-api-key>
+
+# AI — local Ollama is the default
+ollama_host=http://host.docker.internal:11434      # backend container reaches host Ollama
+ollama_model=gemma4:e2b
+ollama_embed_model=nomic-embed-text
+rag_top_k=3
+
 smtp_user=<your-gmail>
 smtp_password=<gmail-app-password>
 email_from=<your-gmail>
@@ -52,7 +62,21 @@ mongo_root_user=admin
 mongo_root_password=changeme
 ```
 
-### Step 2 — Start everything
+### Step 2 — Install Ollama and pull models
+
+```bash
+curl -fsSL https://ollama.com/install.sh | sh
+ollama pull gemma4:e2b              # ~7 GB, used for chat/advice
+ollama pull nomic-embed-text        # ~280 MB, used for RAG embeddings
+```
+
+Verify it's running:
+```bash
+curl http://localhost:11434/
+# → "Ollama is running"
+```
+
+### Step 3 — Start everything
 
 ```bash
 docker compose up --build
@@ -60,12 +84,26 @@ docker compose up --build
 
 First run takes 2-3 minutes (image download + dependency install).
 
-### Step 3 — Visit
+### Step 4 — Seed the knowledge base (one time)
+
+The RAG knowledge base ships empty. Run the seed script once to populate it
+with curated finance facts:
+
+```bash
+docker compose exec backend python scripts/seed_knowledge.py
+```
+
+You'll see ~23 lines like `✅ EMI to income ratio`. Idempotent — safe to re-run.
+
+### Step 5 — Visit
 
 - Frontend: http://localhost:5173
 - Backend API: http://localhost:8000
 - Swagger docs: http://localhost:8000/docs
 - MongoDB: `mongodb://admin:changeme@localhost:27017`
+
+After signup, visit `/dashboard/settings` to confirm the AI provider is set
+to **Local (Ollama)** with model `gemma4:e2b`.
 
 ### Stop everything
 
@@ -91,25 +129,37 @@ Verify it's running:
 docker exec rukiai_mongo mongosh -u admin -p changeme --eval "db.adminCommand('ping')"
 ```
 
-### Step 2 — Configure backend env
+### Step 2 — Install Ollama and pull models
+
+```bash
+curl -fsSL https://ollama.com/install.sh | sh
+ollama pull gemma4:e2b
+ollama pull nomic-embed-text
+```
+
+### Step 3 — Configure backend env
 
 ```bash
 cp backend/.env.example backend/.env
 ```
 
-Edit `backend/.env` — **IMPORTANT** when running backend locally use `localhost`:
+Edit `backend/.env` — when running locally use `localhost` for both Mongo and Ollama:
 
 ```env
-mongo_uri=mongodb://admin:changeme@localhost:27017     # localhost, not mongo
+mongo_uri=mongodb://admin:changeme@localhost:27017
+ollama_host=http://localhost:11434
+ollama_model=gemma4:e2b
+ollama_embed_model=nomic-embed-text
 ```
 
-### Step 3 — Run backend
+### Step 4 — Run backend
 
 ```bash
 cd backend
 python3 -m venv venv
 source venv/bin/activate            # on Windows: venv\Scripts\activate
 pip install -r requirements.txt
+python scripts/seed_knowledge.py    # one-time: seed RAG knowledge base
 uvicorn main:app --reload --port 8000
 ```
 
@@ -119,7 +169,7 @@ INFO: Uvicorn running on http://127.0.0.1:8000
 ✅ MongoDB connected via Beanie
 ```
 
-### Step 4 — Run frontend
+### Step 5 — Run frontend
 
 ```bash
 cd frontend
@@ -139,16 +189,37 @@ If you have MongoDB installed natively.
 # Make sure MongoDB is running on localhost:27017
 sudo systemctl start mongod        # Linux
 
+# Ollama
+curl -fsSL https://ollama.com/install.sh | sh
+ollama pull gemma4:e2b
+ollama pull nomic-embed-text
+
 # Backend
 cd backend
 python3 -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
 # Edit .env: mongo_uri=mongodb://localhost:27017 (no auth)
+python scripts/seed_knowledge.py
 uvicorn main:app --reload
 
 # Frontend (separate terminal)
 cd frontend && pnpm install && pnpm dev
 ```
+
+---
+
+## Switching to a cloud AI provider (per user)
+
+The default is local Gemma. To use Gemini / OpenAI / Anthropic / Cohere instead:
+
+1. Sign up / log in.
+2. Go to **/dashboard/settings → AI & API tab**.
+3. Pick a provider, choose one of its 3 models, paste your API key, click Save.
+
+That choice is stored on your User document (`ai_provider`, `ai_model`,
+`ai_api_key`). All your dashboard advice and chat replies will route to that
+provider from then on. RAG embeddings still happen locally — the provider
+only sees the assembled prompt.
 
 ---
 
@@ -161,7 +232,7 @@ cd backend
 bash test_api.sh
 ```
 
-This tests all 19 endpoints with valid/invalid inputs. Expected output: all green ✅.
+This tests all endpoints with valid/invalid inputs.
 
 You can also explore manually at http://localhost:8000/docs.
 
@@ -186,6 +257,29 @@ Your `mongo_uri` is still the placeholder Atlas URI. Set it to:
 - `mongodb://admin:changeme@mongo:27017` (everything in Docker)
 - `mongodb+srv://...` (your real Atlas URI)
 
+### Dashboard shows "Unable to generate financial advice at this time."
+
+Most common: Ollama is not running, or the model tag in `.env` doesn't match what's pulled.
+
+```bash
+curl http://localhost:11434/                 # should print "Ollama is running"
+ollama list                                  # check the model tag matches OLLAMA_MODEL
+```
+
+If they're fine, check uvicorn logs for an `Ollama generate error` or `AI advice error` line — that has the underlying cause.
+
+### `.env` value contains an inline comment
+
+`.env` parsing is naive — anything after `=` is the value, including inline `#` comments. So this:
+```env
+ollama_model=gemma4:e2b  # this comment is part of the value
+```
+…makes `OLLAMA_MODEL` literally `"gemma4:e2b  # this comment is part of the value"`. Strip the inline comment.
+
+### Chat replies say "I'm having trouble responding right now"
+
+That's the friendly fallback when generation fails. Check uvicorn logs for the actual provider error (rate limit, bad API key, network issue).
+
 ### `pydantic_core._pydantic_core.ValidationError: Extra inputs are not permitted`
 
 Your `.env` has a key the `Settings` class doesn't recognize. Either add it to `src/config/settings.py` or it's already handled — `extra="ignore"` is set, so this shouldn't happen anymore.
@@ -196,7 +290,6 @@ You're on a newer bcrypt that's incompatible with passlib. Pin it:
 ```bash
 pip install bcrypt==4.0.1
 ```
-
 (Already pinned in `requirements.txt`.)
 
 ### `Index already exists with a different name`
@@ -206,15 +299,34 @@ Your old indexes from before a model rewrite conflict with new ones. Drop the DB
 docker exec rukiai_mongo mongosh -u admin -p changeme --authenticationDatabase admin rukiai --eval "db.dropDatabase()"
 ```
 
+After dropping, re-run `python scripts/seed_knowledge.py`.
+
 ### Server starts but every request returns 500
 
 Check `backend/.env` has:
 - `jwt_secret` set (any string ≥ 32 chars)
-- `cohere_api_key` — even a fake value works; the AI call falls back gracefully
+- `ollama_host` reachable from the backend (check `curl ${OLLAMA_HOST}/`)
 
-### Frontend can't reach the backend
+### Frontend can't reach the backend (CORS)
 
-If you're running the frontend locally and backend in Docker (or vice-versa), CORS might block. The backend allows `http://localhost:5173` and `http://localhost:3000` by default — edit `main.py` if your frontend port differs.
+The backend allows any `localhost` / `127.0.0.1` origin on any port via regex.
+If you've put the frontend on a different host, edit `main.py` →
+`allow_origin_regex` to add it.
+
+---
+
+## Re-seeding / extending the knowledge base
+
+To add new finance facts to RAG:
+
+1. Edit `backend/scripts/seed_knowledge.py` → add to the `SEED` list.
+2. Re-run `python scripts/seed_knowledge.py`. Existing entries (matched by
+   title) are skipped; new ones are embedded and inserted.
+
+To wipe and re-seed from scratch, drop the collection first:
+```
+docker exec rukiai_mongo mongosh -u admin -p changeme --authenticationDatabase admin rukiai --eval "db.knowledge_chunks.drop()"
+```
 
 ---
 
@@ -231,9 +343,20 @@ uvicorn main:app --reload --port 8000
 # Run tests
 bash backend/test_api.sh
 
+# Seed RAG knowledge base
+python backend/scripts/seed_knowledge.py
+
 # Add a new dependency
 pip install <package>
 pip freeze | grep <package> >> backend/requirements.txt
+```
+
+### Ollama
+```bash
+ollama list                           # show installed models
+ollama pull gemma4:e2b                # chat / advice
+ollama pull nomic-embed-text          # embeddings
+ollama run gemma4:e2b "Hello"         # quick CLI test
 ```
 
 ### Frontend
@@ -263,7 +386,9 @@ docker exec -it rukiai_mongo mongosh -u admin -p changeme --authenticationDataba
 use rukiai
 show collections
 db.users.find()
-db.dropDatabase()                    # nuke everything (dev only!)
+db.knowledge_chunks.countDocuments()  # how many RAG chunks indexed
+db.chat_messages.countDocuments()     # how many persisted chat turns
+db.dropDatabase()                     # nuke everything (dev only!)
 ```
 
 ---

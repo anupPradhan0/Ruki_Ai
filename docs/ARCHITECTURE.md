@@ -12,15 +12,16 @@ frontend to MongoDB and back, and the design decisions behind each layer.
 │  React Frontend │ ───────────────▶  │   FastAPI Backend           │ ──▶│  MongoDB    │
 │  (Vite + TSR    │ ◀───────────────  │   (Python 3.11, port 8000)  │ ◀──│   (port     │
 │   port 5173)    │      Cookie JWT   │                             │    │   27017)    │
-└─────────────────┘                   └──────────────┬──────────────┘    └─────────────┘
-                                                     │
-                                                     │ HTTPS
-                                                     ▼
-                                            ┌──────────────────┐
-                                            │   Cohere AI      │
-                                            │  command-r-plus  │
-                                            │  (generate+chat) │
-                                            └──────────────────┘
+└─────────────────┘                   └──────┬──────────┬───────────┘    └─────────────┘
+                                             │          │
+                                  HTTP local │          │ HTTPS  (only when user opts in)
+                                             ▼          ▼
+                                    ┌────────────────┐  ┌─────────────────────────────┐
+                                    │  Ollama (local)│  │  User-selected cloud:       │
+                                    │  Gemma 4 E2B   │  │  Gemini · OpenAI · Claude · │
+                                    │  nomic-embed   │  │  Cohere — per-user API key  │
+                                    └────────────────┘  └─────────────────────────────┘
+                                          (default — embeddings ALWAYS local)
 ```
 
 ---
@@ -75,14 +76,16 @@ backend/
     ├── models/                       ← MongoDB schemas (Beanie Documents)
     │   ├── enums.py                    ← Currency, UserType, EmploymentType, …
     │   ├── sub_documents.py            ← FinancialGoal, IncomeSource, QuizAnswer, …
-    │   ├── user_model.py
+    │   ├── user_model.py               ← + ai_provider, ai_model, ai_api_key
     │   ├── student_model.py
     │   ├── employed_model.py
     │   ├── unemployed_model.py
     │   ├── retired_model.py
     │   ├── guest_model.py              ← Anonymous guest session (TTL 2 days)
     │   ├── guest_user_model.py
-    │   └── feedback_model.py
+    │   ├── feedback_model.py
+    │   ├── knowledge_model.py          ← KnowledgeChunk — finance facts + embedding
+    │   └── chat_message_model.py       ← ChatMessage — per-user persisted chat for RAG
     │
     ├── schemas/                      ← API request/response shapes
     │   ├── common_schemas.py
@@ -94,7 +97,8 @@ backend/
     │   ├── guest_schemas.py
     │   ├── feedback_schemas.py
     │   ├── quiz_schemas.py             ← QuizSubmitRequest
-    │   └── chat_schemas.py             ← ChatRequest, ChatResponse
+    │   ├── chat_schemas.py             ← ChatRequest, ChatResponse
+    │   └── ai_settings_schemas.py      ← Provider list, settings get/update
     │
     ├── repositories/
     │   ├── user_repository.py
@@ -114,7 +118,8 @@ backend/
     │   ├── guest_service.py
     │   ├── feedback_service.py
     │   ├── quiz_service.py             ← save_quiz_responses(type, user_id, answers)
-    │   └── chat_service.py             ← chat_with_ai(type, ChatRequest)
+    │   ├── chat_service.py             ← chat_with_ai(type, ChatRequest)
+    │   └── ai_settings_service.py      ← list/get/update per-user AI provider settings
     │
     ├── routers/
     │   ├── index_router.py             ← Public pages, send-email
@@ -123,7 +128,8 @@ backend/
     │   ├── dashboard_router.py         ← /dashboard/{type}
     │   ├── feedback_router.py
     │   ├── quiz_router.py              ← POST /quiz/{user_type}
-    │   └── chat_router.py              ← POST /chat/{user_type}
+    │   ├── chat_router.py              ← POST /chat/{user_type}
+    │   └── ai_settings_router.py       ← /ai-settings/* — providers + per-user config
     │
     ├── middleware/
     │   └── auth_middleware.py        ← get_current_user dependency (JWT)
@@ -131,8 +137,16 @@ backend/
     └── utils/
         ├── jwt_utils.py
         ├── password_utils.py
-        ├── cohere_utils.py            ← get_ai_advice + get_ai_chat_response
+        ├── ai_utils.py                ← multi-provider dispatcher: Local Ollama / OpenAI /
+        │                                Anthropic / Gemini / Cohere. Owns prompt templates.
+        ├── embed_utils.py             ← Ollama nomic-embed-text + cosine similarity
+        ├── rag_utils.py               ← retrieve_relevant_chunks (knowledge RAG)
+        │                                + retrieve_relevant_history (user-data RAG)
+        │                                + persist_chat_turn (writes to chat_messages)
         └── email_utils.py
+
+scripts/
+└── seed_knowledge.py                  ← one-time: embeds and inserts curated finance facts
 ```
 
 ---
@@ -141,8 +155,9 @@ backend/
 
 ```
 Sign up ──► /onboarding ──► /quiz ──► /dashboard
-                                      ├── /dashboard         (Overview)
-                                      └── /dashboard/chat    (AI Chat)
+                                      ├── /dashboard            (Overview)
+                                      ├── /dashboard/chat       (AI Chat)
+                                      └── /dashboard/settings   (Info + AI provider)
 ```
 
 ### How the funnel is enforced
@@ -273,51 +288,99 @@ chrome (Sidebar) and shouldn't inherit the marketing Navbar.
 
 ---
 
-## AI advice & chat
+## AI advice, chat & RAG
 
-Two distinct AI flows, both backed by Cohere `command-r-plus`.
+The whole AI surface lives in `utils/ai_utils.py`. Two public entry points
+(`get_ai_advice`, `get_ai_chat_response`) plus a `PROVIDERS` registry.
+Everything else is plumbing: prompt builders, RAG retrieval, persistence.
 
-### One-shot advice (`utils/cohere_utils.get_ai_advice`)
+### Multi-provider AI
+
+`PROVIDERS` is a registry of supported providers, each with 3 model options:
+
+| Provider | Models | Needs API key | Endpoint |
+|---|---|---|---|
+| `local` (default) | `gemma4:e2b`, `gemma4:e4b`, `gemma3:1b` | no | Ollama `/api/chat` |
+| `gemini` | `gemini-2.5-flash`, `gemini-2.5-pro`, `gemini-2.0-flash` | yes | `generativelanguage.googleapis.com/v1beta/models/{m}:generateContent` |
+| `openai` | `gpt-4o-mini`, `gpt-4o`, `gpt-5` | yes | `api.openai.com/v1/chat/completions` |
+| `anthropic` | `claude-haiku-4-5`, `claude-sonnet-4-6`, `claude-opus-4-7` | yes | `api.anthropic.com/v1/messages` |
+| `cohere` | `command-a-03-2025`, `command-r-plus`, `command-r` | yes | `api.cohere.com/v2/chat` |
+
+Each user picks one in `/dashboard/settings`. The choice is stored on their
+`User` document (`ai_provider`, `ai_model`, `ai_api_key`). Every AI call reads
+those fields via `_ai_settings_from_user()` and dispatches accordingly. No SDKs
+— each provider is a thin httpx call.
+
+**Privacy invariant**: embeddings are *always* local Ollama, even when the
+generation provider is cloud. The user's RAG query never reaches a third
+party in isolation — only the final assembled prompt does, and only if they
+opted into a cloud provider.
+
+### Two RAG pipelines, one prompt
+
+The prompt builders inject **two** retrieved blocks before the LLM sees the question:
+
+1. **Knowledge RAG** — `knowledge_chunks` collection. Curated finance facts
+   (PPF rules, EMI ratios, SCSS rates, etc.). Indexed at seed time. Filtered
+   by `user_type` (or `null` for universal advice).
+2. **User-data RAG** — `chat_messages` collection. Every user/assistant turn
+   is persisted with an embedding. Strictly filtered by `user_id`. Excludes
+   the last 60 seconds so the in-flight conversation doesn't retrieve itself.
+
+Both use cosine similarity in Python over all matching chunks. Brute-force is
+fine up to ~10k items; swap to MongoDB Atlas Vector Search or Qdrant when
+you outgrow that.
+
+### Self-Assessment as a first-class signal
+
+`_extract_essential_fields()` pulls the 10 quiz answers into
+`data["self_assessment"]`. Both prompt builders pop that out of the generic
+profile dump and render it as its own labeled block — `_format_self_assessment()`
+formats Q1…Q10 with their answers. The AI is explicitly instructed to use
+those answers to anchor habits, attitudes, and risk preferences.
+
+### One-shot advice (`get_ai_advice`)
 
 Used by `GET /dashboard/{type}`.
 
 ```
-[1] Receive a profile document (StudentData / EmployedData / …)
-[2] _extract_essential_fields() pulls type-specific fields:
-    - student → education_level, monthly_allowance, financial_goals, …
-    - employed → job_title, monthly_salary, fixed_expenses, …
-    - retired  → pension, retirement_accounts, healthcare, …
-    - any      → quiz_responses → self_assessment
-[3] _build_prompt() formats those fields into a structured prompt
-[4] Async call to Cohere `client.generate()` (max_tokens=300, temp=0.9)
-[5] Returns generated text. On failure: friendly fallback string.
+[1] _extract_essential_fields(profile, user_type)
+    → income, goals, type-specific fields, self_assessment (10 quiz Q&A)
+[2] retrieve_relevant_chunks(query, user_type)  → knowledge RAG
+[3] retrieve_relevant_history(query, user_id)   → user-data RAG (past turns)
+[4] _build_advice_prompt() composes:
+    PROFILE block + SELF-ASSESSMENT block + KNOWLEDGE block
+    + PAST CONVERSATIONS block + REQUIREMENTS + FORMAT
+[5] _dispatch(ai_settings, messages) → routes to the user's chosen provider
+[6] Returns generated text. Failure → friendly fallback string.
 ```
 
-### Conversational chat (`utils/cohere_utils.get_ai_chat_response`)
+### Conversational chat (`get_ai_chat_response`)
 
 Used by `POST /chat/{type}`.
 
 ```
-[1] Build the same essential-fields dict from the profile
-[2] Pack it into a preamble:
-    "You are RukiAI, a personal finance advisor for a {user_type} user.
-     Their profile data: {…}.
-     Give specific, actionable, numbers-backed advice. Keep replies concise …"
-[3] Convert frontend history into Cohere chat_history (USER/CHATBOT roles)
-[4] Async call to client.chat() with message + chat_history + preamble
-    (max_tokens=400, temp=0.7)
-[5] Return reply.text. On failure: friendly fallback string.
+[1] Extract essentials from profile (same as above)
+[2] retrieve_relevant_chunks(message)  → top-k knowledge chunks for THIS question
+[3] retrieve_relevant_history(message, user_id)  → top-k past turns from THIS user
+[4] _build_chat_system() composes the system prompt:
+    persona + profile + self-assessment + past convos + knowledge + style rules
+[5] Append frontend-supplied history + the new user message
+[6] _dispatch(ai_settings, messages) → user's chosen provider
+[7] persist_chat_turn(user_id, "user", message) — embed + insert
+    persist_chat_turn(user_id, "assistant", reply) — embed + insert
+[8] Return reply
 ```
 
 ### Caching strategy
 
 - `ai_advice` and `ai_advice_generated_at` live on each profile document.
 - The dashboard service treats advice as **stale** if older than 7 days OR null.
-- Stale → regenerate, save back, return.
+- Stale → regenerate (with full RAG context), save back, return.
 - Submitting the quiz **clears** `ai_advice` so the next dashboard fetch
-  regenerates with the fresh quiz signal.
-- Chat doesn't write back — the conversation only lives in the frontend's
-  React state.
+  regenerates with the fresh self-assessment signal.
+- Chat does **not** cache responses — but it *does* persist every turn into
+  `chat_messages` so user-data RAG keeps growing over time.
 
 ---
 
@@ -327,7 +390,7 @@ Used by `POST /chat/{type}`.
 
 | Collection | What's in it |
 |---|---|
-| `users` | Auth-relevant: email, hashed_password, user_type, currency |
+| `users` | Auth-relevant: email, hashed_password, user_type, currency, **ai_provider, ai_model, ai_api_key** |
 | `student_data` | Student-specific fields + `quiz_responses[]` |
 | `employed_data` | Employed-specific + `quiz_responses[]` |
 | `unemployed_data` | Unemployed-specific + `quiz_responses[]` |
@@ -335,6 +398,8 @@ Used by `POST /chat/{type}`.
 | `guests` | Anonymous sessions (TTL: 2 days) |
 | `guest_users` | Guest-submitted data (TTL: 7 days) |
 | `feedbacks` | Public feedback messages |
+| `knowledge_chunks` | Curated finance facts + embeddings (knowledge RAG source) |
+| `chat_messages` | Per-user persisted chat turns + embeddings (user-data RAG source) |
 
 This keeps each schema focused, lets us add fields per type without bloating
 the user model, and makes profile-specific queries fast.
@@ -394,8 +459,13 @@ Frontend can rely on consistent error shapes: every error response is
 | Change validation rules on input | `schemas/<type>_schemas.py` |
 | Add a new endpoint | `routers/<area>_router.py` + matching service |
 | Fix a database query bug | `repositories/<type>_repository.py` |
-| Change AI advice prompt | `utils/cohere_utils.py → _build_prompt()` |
-| Change AI chat persona | `utils/cohere_utils.py → get_ai_chat_response()` (preamble) |
+| Change AI advice prompt | `utils/ai_utils.py → _build_advice_prompt()` |
+| Change AI chat system prompt / persona | `utils/ai_utils.py → _build_chat_system()` |
+| Add a new AI provider | `utils/ai_utils.py` → add to `PROVIDERS` + write `_<provider>_chat()` + add a branch in `_dispatch()` |
+| Add available models for an existing provider | `utils/ai_utils.py → PROVIDERS[<id>]["models"]` |
+| Tune RAG retrieval | `utils/rag_utils.py` (top-k, filter logic) + `config/settings.py → RAG_TOP_K` |
+| Add finance knowledge | `scripts/seed_knowledge.py → SEED` then re-run the script |
+| Swap embedding model | `config/settings.py → OLLAMA_EMBED_MODEL` (then re-seed) |
 | Add quiz questions for a user type | `frontend/src/components/pages/QuizPage.tsx → QUESTIONS` |
 | Add a new dashboard section | `frontend/src/components/pages/DashboardOverview.tsx` |
 | Add a sidebar nav item | `frontend/src/components/Sidebar.tsx → NAV` |

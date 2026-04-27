@@ -1,6 +1,6 @@
 # RukiAI — Smart Personal Finance Tracker
 
-> AI-powered personal finance tracker that helps students, employed people, freelancers, the unemployed, and retirees make smarter financial decisions through personalized advice powered by Cohere AI.
+> AI-powered personal finance tracker that helps students, employed people, freelancers, the unemployed, and retirees make smarter financial decisions. Privacy-first by default — runs locally on **Gemma 4 E2B** via Ollama, with optional cloud providers (Gemini · OpenAI · Anthropic · Cohere) selectable per user. Grounded in a finance knowledge base and the user's own past conversations through Retrieval-Augmented Generation (RAG).
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 [![Python 3.11+](https://img.shields.io/badge/Python-3.11+-3776AB?logo=python&logoColor=white)](https://www.python.org/)
@@ -19,7 +19,9 @@
 | **Backend** | Python 3.11 · FastAPI · Beanie (async MongoDB ODM) · Pydantic v2 |
 | **Frontend** | React 18 · TypeScript · Vite · TanStack Router · TanStack Query · Tailwind CSS |
 | **Database** | MongoDB 7 |
-| **AI** | Cohere `command-r-plus` |
+| **AI (default, local)** | Ollama · Gemma 4 E2B (chat) · `nomic-embed-text` (embeddings) |
+| **AI (optional cloud)** | Google Gemini · OpenAI · Anthropic Claude · Cohere — per-user API key |
+| **RAG** | Local embeddings + cosine similarity over `knowledge_chunks` (curated finance facts) and `chat_messages` (this user's past turns) |
 | **Auth** | JWT in HTTP-only cookies |
 | **Email** | aiosmtplib (Gmail SMTP) |
 | **Infra** | Docker Compose |
@@ -43,7 +45,9 @@ Ruki_Ai/
 │       ├── services/      Business logic
 │       ├── routers/       FastAPI route handlers
 │       ├── middleware/    JWT auth dependency
-│       └── utils/         JWT, password, Cohere AI, email
+│       └── utils/         JWT, password, ai_utils (multi-provider), embed_utils, rag_utils, email
+│   └── scripts/
+│       └── seed_knowledge.py   Populates the RAG knowledge base
 │
 ├── frontend/             React + Vite frontend
 │   ├── src/
@@ -72,7 +76,7 @@ Ruki_Ai/
 ```bash
 # 1. Set up the environment
 cp backend/.env.example backend/.env
-# fill in COHERE_API_KEY, JWT_SECRET, SMTP creds
+# fill in JWT_SECRET, SMTP creds (no AI key needed by default — local Ollama is the default provider)
 
 # 2. Run everything
 docker compose up --build
@@ -88,17 +92,25 @@ docker compose up --build
 # 1. MongoDB only via Docker
 docker compose up -d mongo
 
-# 2. Backend
+# 2. Install Ollama and pull the local AI models
+curl -fsSL https://ollama.com/install.sh | sh
+ollama pull gemma4:e2b           # chat / advice generation
+ollama pull nomic-embed-text     # embeddings for RAG
+
+# 3. Backend
 cd backend
 python3 -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
+python scripts/seed_knowledge.py     # one-time: seed the finance knowledge base
 uvicorn main:app --reload
 
-# 3. Frontend (separate terminal)
+# 4. Frontend (separate terminal)
 cd frontend
 pnpm install
 pnpm dev
 ```
+
+After signup, visit `/dashboard/settings` to switch the AI provider (Local Gemma is default; pick Gemini/OpenAI/Anthropic/Cohere and paste your own key to use cloud).
 
 ---
 
@@ -120,7 +132,12 @@ The interactive API explorer is always at **http://localhost:8000/docs** when th
 ## Features
 
 - **Multi-profile support** — Student, Employed, Unemployed, Retired, Guest. Each profile captures a tailored set of financial info
-- **AI-powered advice** — Cohere generates personalised recommendations every 7 days based on actual spending patterns
+- **Local-first AI (privacy by default)** — Gemma 4 E2B runs entirely on your server via Ollama. No data leaves the box unless the user explicitly opts in.
+- **Pick your provider per user** — Settings page lets each user switch to Gemini, OpenAI, Anthropic, or Cohere with their own API key (3 model options each)
+- **Knowledge RAG** — Every reply is grounded in a curated knowledge base of India-flavored finance facts (PPF, ELSS, EMI rules, SCSS, NPS, etc.) retrieved by semantic similarity
+- **User-data RAG** — Chat turns are persisted with embeddings, scoped per user, so the AI remembers prior conversations across sessions
+- **10-question Self-Assessment quiz** — answers are first-class context in the prompt, anchoring advice to the user's habits and risk appetite
+- **7-day advice cache** — Dashboard advice is cached, regenerated when stale or after the quiz is updated
 - **JWT cookie auth** — HTTP-only cookies, 30-day expiry for users, 24-hour expiry for guests
 - **Strict validation** — End-to-end Pydantic types from API boundary all the way to MongoDB
 - **Auto-purging guests** — TTL indexes auto-delete guest data after 2/7 days

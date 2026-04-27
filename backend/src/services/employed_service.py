@@ -72,7 +72,7 @@ async def get_employed_dashboard(user_id: PydanticObjectId) -> EmployedDashboard
     )
 
     if stale:
-        advice = await get_ai_advice(employed, "employed", _ai_settings_from_user(user))
+        advice = await get_ai_advice(employed, "employed", _ai_settings_from_user(user), user_id=user_id)
         await update_employed_ai_advice(employed.id, advice)
         employed.ai_advice = advice
 
