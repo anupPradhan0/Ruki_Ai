@@ -35,9 +35,11 @@ Every library used in this project, what it does, and why it was picked over alt
 - passlib provides a clean API on top
 - **Why pinned to bcrypt 4.0.1**: passlib breaks with bcrypt ≥ 4.1 due to a removed internal attribute
 
-### **cohere** — AI advice generation
-- Official Cohere Python SDK
-- Uses `command-r-plus` model
+### **cohere** — AI advice + chat
+- Official Cohere Python SDK (v5+)
+- Uses `command-r-plus` for both flows:
+  - **Advice** — `client.generate()` builds a one-shot prompt from profile + quiz answers (called by the dashboard endpoint, cached for 7 days)
+  - **Chat** — `client.chat()` with `chat_history` and a profile-aware `preamble` (called by `POST /chat/{type}`, no persistence)
 - **Why Cohere over OpenAI**: cheaper, has a generous free tier, trained for instruction-following
 
 ### **aiosmtplib** — async email sending
@@ -77,6 +79,7 @@ Every library used in this project, what it does, and why it was picked over alt
 ### **TanStack Router** — file-based routing
 - Type-safe router with file-based route generation
 - Auto-generates `routeTree.gen.ts` based on `src/routes/` folder layout
+- Pathless layout groups (`_auth.tsx`) wrap login/signup/onboarding/quiz with the marketing Navbar; the dashboard sits **outside** that group so it owns its own chrome (Sidebar)
 - **Why over React Router**: full type safety on route params, search params, navigation
 
 ### **TanStack Query** — server state management
@@ -140,11 +143,17 @@ Inspired by clean architecture / DDD — every file has one reason to change.
 - Profile-specific queries stay fast (indexed by user_id)
 - Easy to add new user types without touching the User collection
 
-### **AI advice 7-day cache**
+### **AI advice 7-day cache (with quiz invalidation)**
 - Cohere takes ~2 seconds per call
 - A user's spending pattern doesn't change daily
 - Cached advice on dashboard load = sub-100ms response time
 - Background refresh when the cache expires
+- Submitting the quiz wipes the cache so the next dashboard call re-runs Cohere with the new self-assessment signal mixed in
+
+### **Stateless chat (no DB persistence)**
+- The frontend keeps the conversation in component state and re-sends the full `history` on every `/chat/{type}` call
+- Profile context is injected as a Cohere `preamble`, so each reply stays grounded in real data
+- No DB writes per turn → simpler, cheaper, and the user can refresh to start over
 
 ### **TTL indexes for guest data**
 - Guest sessions auto-expire after 2 days
