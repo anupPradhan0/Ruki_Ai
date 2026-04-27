@@ -10,6 +10,7 @@ from src.routers.dashboard_router import router as dashboard_router
 from src.routers.feedback_router import router as feedback_router
 from src.routers.quiz_router import router as quiz_router
 from src.routers.chat_router import router as chat_router
+from src.routers.ai_settings_router import router as ai_settings_router
 
 
 @asynccontextmanager
@@ -29,7 +30,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:3000"],
+    allow_origin_regex=r"^http://(localhost|127\.0\.0\.1)(:\d+)?$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -42,6 +43,7 @@ app.include_router(dashboard_router)
 app.include_router(feedback_router)
 app.include_router(quiz_router)
 app.include_router(chat_router)
+app.include_router(ai_settings_router)
 
 
 if __name__ == "__main__":

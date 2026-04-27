@@ -14,7 +14,7 @@ from src.repositories.unemployed_repository import (
     update_unemployed_ai_advice,
 )
 from src.repositories.user_repository import find_user_by_id, update_user_type
-from src.utils.cohere_utils import get_ai_advice
+from src.utils.ai_utils import get_ai_advice, _ai_settings_from_user
 from src.models.enums import UserType
 
 _STALE_DAYS = 7
@@ -80,7 +80,7 @@ async def get_unemployed_dashboard(user_id: PydanticObjectId) -> UnemployedDashb
     )
 
     if stale:
-        advice = await get_ai_advice(unemployed, "unemployed")
+        advice = await get_ai_advice(unemployed, "unemployed", _ai_settings_from_user(user))
         await update_unemployed_ai_advice(unemployed.id, advice)
         unemployed.ai_advice = advice
 

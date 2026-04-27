@@ -1,10 +1,11 @@
 import { Link, useRouterState } from "@tanstack/react-router"
-import { LayoutDashboard, MessageSquare, LogOut, Sparkles } from "lucide-react"
+import { LayoutDashboard, MessageSquare, LogOut, Sparkles, Settings } from "lucide-react"
 import { api, session } from "@/lib/api"
 
 const NAV = [
   { to: "/dashboard", label: "Overview", icon: LayoutDashboard },
   { to: "/dashboard/chat", label: "AI Chat", icon: MessageSquare },
+  { to: "/dashboard/settings", label: "Settings", icon: Settings },
 ] as const
 
 export default function Sidebar() {

@@ -7,7 +7,8 @@ class Settings(BaseSettings):
     DB_NAME: str = "rukiai"
     JWT_SECRET: str
     JWT_EXPIRE_DAYS: int = 30
-    COHERE_API_KEY: str
+    OLLAMA_HOST: str = "http://localhost:11434"
+    OLLAMA_MODEL: str = "gemma4:e2b"
     SMTP_HOST: str = "smtp.gmail.com"
     SMTP_PORT: int = 465
     SMTP_USER: str

@@ -14,6 +14,7 @@ import { Route as LayoutRouteImport } from './routes/_layout'
 import { Route as AuthRouteImport } from './routes/_auth'
 import { Route as DashboardIndexRouteImport } from './routes/dashboard/index'
 import { Route as LayoutIndexRouteImport } from './routes/_layout/index'
+import { Route as DashboardSettingsRouteImport } from './routes/dashboard/settings'
 import { Route as DashboardChatRouteImport } from './routes/dashboard/chat'
 import { Route as LayoutHowItWorksRouteImport } from './routes/_layout/how-it-works'
 import { Route as LayoutFeaturesRouteImport } from './routes/_layout/features'
@@ -45,6 +46,11 @@ const LayoutIndexRoute = LayoutIndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => LayoutRoute,
+} as any)
+const DashboardSettingsRoute = DashboardSettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
+  getParentRoute: () => DashboardRoute,
 } as any)
 const DashboardChatRoute = DashboardChatRouteImport.update({
   id: '/chat',
@@ -98,6 +104,7 @@ export interface FileRoutesByFullPath {
   '/features': typeof LayoutFeaturesRoute
   '/how-it-works': typeof LayoutHowItWorksRoute
   '/dashboard/chat': typeof DashboardChatRoute
+  '/dashboard/settings': typeof DashboardSettingsRoute
   '/dashboard/': typeof DashboardIndexRoute
 }
 export interface FileRoutesByTo {
@@ -110,6 +117,7 @@ export interface FileRoutesByTo {
   '/features': typeof LayoutFeaturesRoute
   '/how-it-works': typeof LayoutHowItWorksRoute
   '/dashboard/chat': typeof DashboardChatRoute
+  '/dashboard/settings': typeof DashboardSettingsRoute
   '/dashboard': typeof DashboardIndexRoute
 }
 export interface FileRoutesById {
@@ -125,6 +133,7 @@ export interface FileRoutesById {
   '/_layout/features': typeof LayoutFeaturesRoute
   '/_layout/how-it-works': typeof LayoutHowItWorksRoute
   '/dashboard/chat': typeof DashboardChatRoute
+  '/dashboard/settings': typeof DashboardSettingsRoute
   '/_layout/': typeof LayoutIndexRoute
   '/dashboard/': typeof DashboardIndexRoute
 }
@@ -141,6 +150,7 @@ export interface FileRouteTypes {
     | '/features'
     | '/how-it-works'
     | '/dashboard/chat'
+    | '/dashboard/settings'
     | '/dashboard/'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -153,6 +163,7 @@ export interface FileRouteTypes {
     | '/features'
     | '/how-it-works'
     | '/dashboard/chat'
+    | '/dashboard/settings'
     | '/dashboard'
   id:
     | '__root__'
@@ -167,6 +178,7 @@ export interface FileRouteTypes {
     | '/_layout/features'
     | '/_layout/how-it-works'
     | '/dashboard/chat'
+    | '/dashboard/settings'
     | '/_layout/'
     | '/dashboard/'
   fileRoutesById: FileRoutesById
@@ -213,6 +225,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/'
       preLoaderRoute: typeof LayoutIndexRouteImport
       parentRoute: typeof LayoutRoute
+    }
+    '/dashboard/settings': {
+      id: '/dashboard/settings'
+      path: '/settings'
+      fullPath: '/dashboard/settings'
+      preLoaderRoute: typeof DashboardSettingsRouteImport
+      parentRoute: typeof DashboardRoute
     }
     '/dashboard/chat': {
       id: '/dashboard/chat'
@@ -308,11 +327,13 @@ const LayoutRouteWithChildren =
 
 interface DashboardRouteChildren {
   DashboardChatRoute: typeof DashboardChatRoute
+  DashboardSettingsRoute: typeof DashboardSettingsRoute
   DashboardIndexRoute: typeof DashboardIndexRoute
 }
 
 const DashboardRouteChildren: DashboardRouteChildren = {
   DashboardChatRoute: DashboardChatRoute,
+  DashboardSettingsRoute: DashboardSettingsRoute,
   DashboardIndexRoute: DashboardIndexRoute,
 }
 
