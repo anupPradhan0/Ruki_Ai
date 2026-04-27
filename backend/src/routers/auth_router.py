@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Response
+from src.config.settings import get_settings
 from src.schemas.auth_schemas import SignupRequest, LoginRequest, AuthResponse
 from src.services.auth_service import register_user, login_user, create_guest_session
 
@@ -6,6 +7,13 @@ router = APIRouter(prefix="/user", tags=["auth"])
 
 _COOKIE_MAX_AGE = 30 * 24 * 60 * 60  # 30 days in seconds
 _GUEST_COOKIE_MAX_AGE = 24 * 60 * 60  # 24 hours in seconds
+
+# In production: HTTPS-only (`secure=True`) and `samesite=lax` so cookies survive
+# a top-level navigation from rukiai.online to api.rukiai.online (still same-site
+# by registrable-domain rule, but `lax` is the safer default for cross-subdomain).
+_SETTINGS = get_settings()
+_COOKIE_SECURE = _SETTINGS.is_production
+_COOKIE_SAMESITE = "lax" if _SETTINGS.is_production else "strict"
 
 
 @router.post("/signup", response_model=AuthResponse)
@@ -16,8 +24,8 @@ async def signup(data: SignupRequest, response: Response) -> AuthResponse:
         value=token,
         httponly=True,
         max_age=_COOKIE_MAX_AGE,
-        samesite="strict",
-        secure=False,
+        samesite=_COOKIE_SAMESITE,
+        secure=_COOKIE_SECURE,
     )
     return AuthResponse(
         message="Signup successful",
@@ -34,8 +42,8 @@ async def login(data: LoginRequest, response: Response) -> AuthResponse:
         value=token,
         httponly=True,
         max_age=_COOKIE_MAX_AGE,
-        samesite="strict",
-        secure=False,
+        samesite=_COOKIE_SAMESITE,
+        secure=_COOKIE_SECURE,
     )
     return AuthResponse(
         message="Login successful",
@@ -58,8 +66,8 @@ async def guest_login(response: Response) -> AuthResponse:
         value=token,
         httponly=True,
         max_age=_GUEST_COOKIE_MAX_AGE,
-        samesite="strict",
-        secure=False,
+        samesite=_COOKIE_SAMESITE,
+        secure=_COOKIE_SECURE,
     )
     return AuthResponse(
         message="Guest session created",

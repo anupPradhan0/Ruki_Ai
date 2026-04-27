@@ -2,6 +2,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from src.config.settings import get_settings
 from src.db.database import init_db
 from src.routers.index_router import router as index_router
 from src.routers.auth_router import router as auth_router
@@ -28,13 +29,27 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origin_regex=r"^http://(localhost|127\.0\.0\.1)(:\d+)?$",
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+_settings = get_settings()
+_cors_origins = _settings.allowed_origins_list
+
+if _cors_origins:
+    # Production: explicit allowlist from .env (e.g. https://rukiai.online).
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=_cors_origins,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+else:
+    # Dev fallback: any localhost / 127.0.0.1 origin on any port.
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origin_regex=r"^http://(localhost|127\.0\.0\.1)(:\d+)?$",
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
 app.include_router(index_router)
 app.include_router(auth_router)
