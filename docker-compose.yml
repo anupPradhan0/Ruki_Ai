@@ -8,6 +8,13 @@ services:
       - "8000:8000"
     env_file:
       - ./backend/.env
+    environment:
+      # Override .env so the containerized backend talks to Ollama running on
+      # the HOST (not inside the container). Works on Linux thanks to the
+      # extra_hosts mapping below; works out-of-the-box on Docker Desktop.
+      OLLAMA_HOST: http://host.docker.internal:11434
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       mongo:
         condition: service_healthy
