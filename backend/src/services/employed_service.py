@@ -1,7 +1,13 @@
 from datetime import datetime, timedelta
 from fastapi import HTTPException
 from beanie import PydanticObjectId
-from src.schemas.employed_schemas import EmployedFormRequest
+
+from src.schemas.employed_schemas import (
+    EmployedFormRequest,
+    EmployedDashboardResponse,
+    EmployedProfileSummary,
+)
+from src.schemas.common_schemas import MessageResponse, UserSummary
 from src.repositories.employed_repository import (
     find_employed_by_user_id,
     create_employed_data,
@@ -9,12 +15,13 @@ from src.repositories.employed_repository import (
 )
 from src.repositories.user_repository import find_user_by_id, update_user_type
 from src.utils.cohere_utils import get_ai_advice
+from src.models.enums import UserType
 
 _STALE_DAYS = 7
 
 
-async def process_employed_form(data: EmployedFormRequest) -> dict:
-    """Save employed profile and update user_type to 'employed'."""
+async def process_employed_form(data: EmployedFormRequest) -> MessageResponse:
+    """Save an employed profile and update the user's type."""
     try:
         user_id = PydanticObjectId(data.user_id)
     except Exception:
@@ -44,19 +51,19 @@ async def process_employed_form(data: EmployedFormRequest) -> dict:
         summary_frequency=data.summary_frequency,
         investment_preferences=data.investment_preferences,
     )
-    await update_user_type(user_id, "employed")
-    return {"message": "Employed profile saved", "user_type": "employed"}
+    await update_user_type(user_id, UserType.EMPLOYED.value)
+    return MessageResponse(message="Employed profile saved", user_type=UserType.EMPLOYED)
 
 
-async def get_employed_dashboard(user_id: PydanticObjectId) -> dict:
-    """Return employed dashboard data, refreshing AI advice if stale (>7 days)."""
+async def get_employed_dashboard(user_id: PydanticObjectId) -> EmployedDashboardResponse:
+    """Return the typed employed dashboard, refreshing AI advice if stale (>7 days)."""
     user = await find_user_by_id(user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
     employed = await find_employed_by_user_id(user_id)
     if not employed:
-        return {"needs_onboarding": True}
+        return EmployedDashboardResponse(needs_onboarding=True, user=UserSummary.model_validate(user))
 
     stale = (
         employed.ai_advice is None
@@ -69,8 +76,8 @@ async def get_employed_dashboard(user_id: PydanticObjectId) -> dict:
         await update_employed_ai_advice(employed.id, advice)
         employed.ai_advice = advice
 
-    return {
-        "user": {"email": user.email, "full_name": user.full_name, "currency": user.currency},
-        "employed": employed.model_dump(),
-        "ai_advice": employed.ai_advice,
-    }
+    return EmployedDashboardResponse(
+        user=UserSummary.model_validate(user),
+        employed=EmployedProfileSummary.model_validate(employed),
+        ai_advice=employed.ai_advice,
+    )

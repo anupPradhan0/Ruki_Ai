@@ -1,7 +1,13 @@
 from datetime import datetime, timedelta
 from fastapi import HTTPException
 from beanie import PydanticObjectId
-from src.schemas.unemployed_schemas import UnemployedFormRequest
+
+from src.schemas.unemployed_schemas import (
+    UnemployedFormRequest,
+    UnemployedDashboardResponse,
+    UnemployedProfileSummary,
+)
+from src.schemas.common_schemas import MessageResponse, UserSummary
 from src.repositories.unemployed_repository import (
     find_unemployed_by_user_id,
     create_unemployed_data,
@@ -9,12 +15,13 @@ from src.repositories.unemployed_repository import (
 )
 from src.repositories.user_repository import find_user_by_id, update_user_type
 from src.utils.cohere_utils import get_ai_advice
+from src.models.enums import UserType
 
 _STALE_DAYS = 7
 
 
-async def process_unemployed_form(data: UnemployedFormRequest) -> dict:
-    """Save unemployed profile; block duplicate submissions for same user."""
+async def process_unemployed_form(data: UnemployedFormRequest) -> MessageResponse:
+    """Save an unemployed profile; reject duplicate submissions for the same user."""
     try:
         user_id = PydanticObjectId(data.user_id)
     except Exception:
@@ -52,19 +59,19 @@ async def process_unemployed_form(data: UnemployedFormRequest) -> dict:
         summary_frequency=data.summary_frequency,
         support_resources=data.support_resources,
     )
-    await update_user_type(user_id, "unemployed")
-    return {"message": "Unemployed profile saved", "user_type": "unemployed"}
+    await update_user_type(user_id, UserType.UNEMPLOYED.value)
+    return MessageResponse(message="Unemployed profile saved", user_type=UserType.UNEMPLOYED)
 
 
-async def get_unemployed_dashboard(user_id: PydanticObjectId) -> dict:
-    """Return unemployed dashboard data, refreshing AI advice if stale (>7 days)."""
+async def get_unemployed_dashboard(user_id: PydanticObjectId) -> UnemployedDashboardResponse:
+    """Return the typed unemployed dashboard, refreshing AI advice if stale (>7 days)."""
     user = await find_user_by_id(user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
     unemployed = await find_unemployed_by_user_id(user_id)
     if not unemployed:
-        return {"needs_onboarding": True}
+        return UnemployedDashboardResponse(needs_onboarding=True, user=UserSummary.model_validate(user))
 
     stale = (
         unemployed.ai_advice is None
@@ -77,8 +84,8 @@ async def get_unemployed_dashboard(user_id: PydanticObjectId) -> dict:
         await update_unemployed_ai_advice(unemployed.id, advice)
         unemployed.ai_advice = advice
 
-    return {
-        "user": {"email": user.email, "full_name": user.full_name, "currency": user.currency},
-        "unemployed": unemployed.model_dump(),
-        "ai_advice": unemployed.ai_advice,
-    }
+    return UnemployedDashboardResponse(
+        user=UserSummary.model_validate(user),
+        unemployed=UnemployedProfileSummary.model_validate(unemployed),
+        ai_advice=unemployed.ai_advice,
+    )

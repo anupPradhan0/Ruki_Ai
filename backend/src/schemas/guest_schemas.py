@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Optional, List
 from pydantic import BaseModel, Field, ConfigDict
 
@@ -20,11 +21,18 @@ class GuestFormRequest(BaseModel):
     )
 
 
-class GuestDashboardResponse(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    user_id: Optional[str] = None
+class GuestProfileSummary(BaseModel):
     current_status: GuestStatus
     monthly_income: Optional[float] = None
     financial_goal: List[GuestFinancialGoal] = []
+    summary_frequency: GuestSummaryFrequency = GuestSummaryFrequency.NEVER
     help_preferences: List[HelpPreference] = []
+    created_at: Optional[datetime] = None
+
+    model_config = ConfigDict(from_attributes=True, use_enum_values=True)
+
+
+class GuestDashboardResponse(BaseModel):
+    guest_user: GuestProfileSummary
+
+    model_config = ConfigDict(from_attributes=True)

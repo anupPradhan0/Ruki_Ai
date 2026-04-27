@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Optional, List
 from pydantic import BaseModel, Field, ConfigDict
 
@@ -10,6 +11,7 @@ from src.models.sub_documents import (
     FinancialGoal,
     InvestmentPreferences,
 )
+from src.schemas.common_schemas import UserSummary
 
 
 class EmployedFormRequest(BaseModel):
@@ -37,13 +39,32 @@ class EmployedFormRequest(BaseModel):
     )
 
 
-class EmployedDashboardResponse(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    user_id: str
+class EmployedProfileSummary(BaseModel):
     job_title: Optional[str] = None
     employment_type: Optional[EmploymentType] = None
     company: Optional[str] = None
+    work_industry: Optional[str] = None
+    work_location: Optional[str] = None
     monthly_salary: Optional[float] = None
+    pay_frequency: PayFrequency
+    additional_income_sources: List[IncomeSource] = []
+    has_bonuses: bool = False
+    bonus_details: Optional[BonusDetails] = None
+    fixed_expenses: List[FixedExpense] = []
+    budget_limits: List[BudgetLimit] = []
     financial_goals: List[FinancialGoal] = []
+    summary_frequency: Optional[SummaryFrequency] = None
+    investment_preferences: Optional[InvestmentPreferences] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+    model_config = ConfigDict(from_attributes=True, use_enum_values=True)
+
+
+class EmployedDashboardResponse(BaseModel):
+    needs_onboarding: bool = False
+    user: Optional[UserSummary] = None
+    employed: Optional[EmployedProfileSummary] = None
     ai_advice: Optional[str] = None
+
+    model_config = ConfigDict(from_attributes=True)

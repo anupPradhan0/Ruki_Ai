@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Optional, List
 from pydantic import BaseModel, Field, ConfigDict
 
@@ -8,6 +9,7 @@ from src.models.enums import (
     SummaryFrequency,
 )
 from src.models.sub_documents import CustomCategory, FinancialGoal
+from src.schemas.common_schemas import UserSummary
 
 
 class StudentFormRequest(BaseModel):
@@ -28,10 +30,8 @@ class StudentFormRequest(BaseModel):
     )
 
 
-class StudentDashboardResponse(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    user_id: str
+class StudentProfileSummary(BaseModel):
+    """Public-facing student profile shape (no Beanie internals)."""
     education_level: EducationLevel
     institution_name: Optional[str] = None
     living_situation: StudentLivingSituation
@@ -40,4 +40,16 @@ class StudentDashboardResponse(BaseModel):
     custom_categories: List[CustomCategory] = []
     financial_goals: List[FinancialGoal] = []
     summary_frequency: SummaryFrequency
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+    model_config = ConfigDict(from_attributes=True, use_enum_values=True)
+
+
+class StudentDashboardResponse(BaseModel):
+    needs_onboarding: bool = False
+    user: Optional[UserSummary] = None
+    student: Optional[StudentProfileSummary] = None
     ai_advice: Optional[str] = None
+
+    model_config = ConfigDict(from_attributes=True)

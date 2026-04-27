@@ -1,6 +1,11 @@
 from fastapi import HTTPException
 from beanie import PydanticObjectId
-from src.schemas.guest_schemas import GuestFormRequest
+
+from src.schemas.guest_schemas import (
+    GuestFormRequest,
+    GuestDashboardResponse,
+    GuestProfileSummary,
+)
 from src.repositories.guest_repository import (
     find_guest_by_id,
     find_guest_user_by_user_id,
@@ -8,8 +13,8 @@ from src.repositories.guest_repository import (
 )
 
 
-async def get_or_create_guest_dashboard(data: GuestFormRequest) -> dict:
-    """Return existing guest profile or create one from submitted form data."""
+async def get_or_create_guest_dashboard(data: GuestFormRequest) -> GuestDashboardResponse:
+    """Return existing guest profile, or create one from the submitted form data."""
     try:
         user_id = PydanticObjectId(data.user_id)
     except Exception:
@@ -21,25 +26,14 @@ async def get_or_create_guest_dashboard(data: GuestFormRequest) -> dict:
 
     existing = await find_guest_user_by_user_id(user_id)
     if existing:
-        return {"guest_user": existing.model_dump()}
-
-    valid_priorities = {"high", "medium", "low"}
-    clean_goals = []
-    for g in data.financial_goal:
-        if isinstance(g, dict):
-            priority = g.get("priority", "medium")
-            g["priority"] = priority if priority in valid_priorities else "medium"
-            clean_goals.append(g)
-
-    valid_frequencies = {"weekly", "monthly", "never"}
-    frequency = data.summary_frequency if data.summary_frequency in valid_frequencies else "never"
+        return GuestDashboardResponse(guest_user=GuestProfileSummary.model_validate(existing))
 
     guest_user = await create_guest_user(
         user_id=user_id,
         current_status=data.current_status,
         monthly_income=data.monthly_income,
-        financial_goal=clean_goals,
-        summary_frequency=frequency,
-        help_preferences=data.help_preferences,
+        financial_goal=[g.model_dump(by_alias=True) for g in data.financial_goal],
+        summary_frequency=data.summary_frequency,
+        help_preferences=[hp.value if hasattr(hp, "value") else hp for hp in data.help_preferences],
     )
-    return {"guest_user": guest_user.model_dump()}
+    return GuestDashboardResponse(guest_user=GuestProfileSummary.model_validate(guest_user))

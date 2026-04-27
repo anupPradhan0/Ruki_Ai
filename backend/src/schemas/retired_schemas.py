@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Optional, List
 from pydantic import BaseModel, ConfigDict
 
@@ -13,6 +14,7 @@ from src.models.sub_documents import (
     SavingsGoal,
     LegacyPlanning,
 )
+from src.schemas.common_schemas import UserSummary
 
 
 class RetiredFormRequest(BaseModel):
@@ -35,10 +37,27 @@ class RetiredFormRequest(BaseModel):
     )
 
 
-class RetiredDashboardResponse(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    user_id: str
+class RetiredProfileSummary(BaseModel):
     pension: Optional[PensionInfo] = None
+    other_income_sources: List[IncomeSource] = []
+    retirement_account_withdrawals: List[RetirementAccountWithdrawal] = []
+    housing: Optional[HousingInfo] = None
+    healthcare: Optional[HealthcareInfo] = None
+    other_expenses: List[OtherExpense] = []
+    retirement_accounts: List[RetirementAccount] = []
+    other_assets: List[OtherAsset] = []
     savings_goals: List[SavingsGoal] = []
+    legacy_planning: Optional[LegacyPlanning] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+    model_config = ConfigDict(from_attributes=True, use_enum_values=True)
+
+
+class RetiredDashboardResponse(BaseModel):
+    needs_onboarding: bool = False
+    user: Optional[UserSummary] = None
+    retired: Optional[RetiredProfileSummary] = None
     ai_advice: Optional[str] = None
+
+    model_config = ConfigDict(from_attributes=True)
