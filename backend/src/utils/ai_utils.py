@@ -194,13 +194,18 @@ def _build_chat_system(
     )
 
 
-def _ai_settings_from_user(user: Any) -> dict:
+def ai_settings_from_user(user: Any) -> dict:
     """Pull AI settings off the User document with sensible defaults."""
     return {
         "provider": getattr(user, "ai_provider", None) or "local",
         "model": getattr(user, "ai_model", None) or "gemma4:e2b",
         "api_key": getattr(user, "ai_api_key", None),
     }
+
+
+# Backward-compatible alias so existing imports (`from ... import _ai_settings_from_user`)
+# keep working until callers are updated. Safe to remove once all imports are public.
+_ai_settings_from_user = ai_settings_from_user
 
 
 # ── Provider implementations ─────────────────────────────────────────────────
@@ -234,7 +239,11 @@ async def _openai_chat(model: str, api_key: str, messages: list, temperature: fl
             headers={"Authorization": f"Bearer {api_key}"},
         )
         r.raise_for_status()
-        return r.json()["choices"][0]["message"]["content"].strip()
+        data = r.json()
+        choices = data.get("choices") or []
+        if not choices:
+            return ""
+        return (choices[0].get("message", {}).get("content") or "").strip()
 
 
 async def _anthropic_chat(model: str, api_key: str, messages: list, temperature: float, max_tokens: int) -> str:
@@ -259,7 +268,7 @@ async def _anthropic_chat(model: str, api_key: str, messages: list, temperature:
             json=payload,
             headers={
                 "x-api-key": api_key,
-                "anthropic-version": "2023-06-01",
+                "anthropic-version": "2024-06-15",
                 "content-type": "application/json",
             },
         )

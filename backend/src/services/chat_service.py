@@ -7,7 +7,7 @@ from src.repositories.employed_repository import find_employed_by_user_id
 from src.repositories.unemployed_repository import find_unemployed_by_user_id
 from src.repositories.retired_repository import find_retired_by_user_id
 from src.repositories.user_repository import find_user_by_id
-from src.utils.ai_utils import get_ai_chat_response, _ai_settings_from_user
+from src.utils.ai_utils import get_ai_chat_response, ai_settings_from_user
 
 
 _FINDERS = {
@@ -35,7 +35,7 @@ async def chat_with_ai(user_type: str, data: ChatRequest) -> ChatResponse:
         )
 
     user = await find_user_by_id(user_id)
-    ai_settings = _ai_settings_from_user(user) if user else None
+    ai_settings = ai_settings_from_user(user) if user else None
 
     history = [t.model_dump() for t in data.history]
     reply = await get_ai_chat_response(profile, user_type, history, data.message, ai_settings, user_id=user_id)

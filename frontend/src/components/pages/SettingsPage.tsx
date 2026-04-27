@@ -134,6 +134,9 @@ function AiTab() {
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["ai-settings"] })
+      // Cached dashboard advice was generated under the old provider/model.
+      // Invalidate so the next dashboard view re-fetches and triggers regeneration.
+      qc.invalidateQueries({ queryKey: ["dashboard"] })
       setApiKey("")
       setSavedFlash(true)
       setTimeout(() => setSavedFlash(false), 2000)
@@ -147,9 +150,23 @@ function AiTab() {
   const onProviderChange = (newId: string) => {
     setProvider(newId)
     const prov = providers.find((p) => p.id === newId)
-    setModel(prov?.models?.[0] ?? "")
+    const firstModel = prov?.models?.[0] ?? ""
+    setModel(firstModel)
     setApiKey("")
   }
+
+  // If the saved/loaded model isn't valid for the currently selected provider
+  // (e.g. provider list arrived after settings, or someone changed it server-side),
+  // snap to the first available model so the <select> never displays a stale value.
+  useEffect(() => {
+    if (!currentProvider || !model) return
+    if (!currentProvider.models.includes(model)) {
+      setModel(currentProvider.models[0] ?? "")
+    }
+  }, [currentProvider, model])
+
+  const needsKeyButMissing =
+    !!currentProvider?.needs_api_key && !apiKey && !settingsQuery.data?.has_api_key
 
   return (
     <div className="space-y-6">
@@ -220,7 +237,7 @@ function AiTab() {
         <button
           type="button"
           onClick={() => saveMutation.mutate()}
-          disabled={saveMutation.isPending || !provider || !model}
+          disabled={saveMutation.isPending || !provider || !model || needsKeyButMissing}
           className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#FFD700] text-black text-sm font-medium hover:bg-[#e6c200] disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
         >
           {saveMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
