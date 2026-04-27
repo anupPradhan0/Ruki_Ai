@@ -1,9 +1,27 @@
-import { Link } from "@tanstack/react-router"
+import { Link, useNavigate } from "@tanstack/react-router"
 import { useState } from "react"
-import { Eye, EyeOff } from "lucide-react"
+import { useMutation } from "@tanstack/react-query"
+import { Eye, EyeOff, Loader2, AlertCircle } from "lucide-react"
+import { api, type LoginPayload } from "@/lib/api"
 
 export default function LoginPage() {
+  const navigate = useNavigate()
   const [show, setShow] = useState(false)
+  const [email, setEmail] = useState("")
+  const [password, setPassword] = useState("")
+
+  const login = useMutation({
+    mutationFn: (data: LoginPayload) => api.login(data),
+    onSuccess: () => {
+      navigate({ to: "/" })
+    },
+  })
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!email || !password) return
+    login.mutate({ email: email.trim(), password })
+  }
 
   return (
     <div className="flex items-center justify-center px-4 py-16">
@@ -14,12 +32,22 @@ export default function LoginPage() {
         </div>
 
         <div className="bg-[#1A1A1A] rounded-2xl border border-white/5 p-8">
-          <form className="space-y-5" onSubmit={(e) => e.preventDefault()}>
+          <form className="space-y-5" onSubmit={handleSubmit}>
+            {login.isError && (
+              <div className="flex items-start gap-2 bg-red-500/10 border border-red-500/30 rounded-xl px-4 py-3 text-red-400 text-sm">
+                <AlertCircle size={16} className="mt-0.5 shrink-0" />
+                <span>{(login.error as Error)?.message ?? "Something went wrong"}</span>
+              </div>
+            )}
+
             <div>
               <label className="block text-sm font-medium mb-2 text-white/80">Email</label>
               <input
                 type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
                 placeholder="you@example.com"
+                required
                 className="w-full bg-[#0F0F0F] border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder-white/30 focus:outline-none focus:border-[#FFD700]/50 transition-colors"
               />
             </div>
@@ -28,7 +56,10 @@ export default function LoginPage() {
               <div className="relative">
                 <input
                   type={show ? "text" : "password"}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
+                  required
                   className="w-full bg-[#0F0F0F] border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder-white/30 focus:outline-none focus:border-[#FFD700]/50 transition-colors pr-12"
                 />
                 <button
@@ -51,9 +82,11 @@ export default function LoginPage() {
 
             <button
               type="submit"
-              className="w-full py-3.5 bg-[#FFD700] text-black font-semibold rounded-xl hover:bg-[#e6c200] transition-all"
+              disabled={login.isPending}
+              className="w-full py-3.5 bg-[#FFD700] text-black font-semibold rounded-xl hover:bg-[#e6c200] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             >
-              Log In
+              {login.isPending && <Loader2 size={16} className="animate-spin" />}
+              {login.isPending ? "Logging in..." : "Log In"}
             </button>
           </form>
 
