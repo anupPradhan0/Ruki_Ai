@@ -1,0 +1,43 @@
+# Secrets — never bake into images.
+.env
+.env.*
+!.env.example
+!.env.production.example
+
+# Python build / cache artifacts
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.so
+.Python
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# Virtual environments
+venv/
+.venv/
+env/
+ENV/
+
+# Tooling / IDE
+.git
+.gitignore
+.vscode/
+.idea/
+.DS_Store
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Local logs / runtime junk
+*.log
+*.pid
+
+# Docs that don't need to ship in the image (the repo's top-level /docs
+# isn't copied anyway since this Dockerfile's context is ./backend).
+README.md
