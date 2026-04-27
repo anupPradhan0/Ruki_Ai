@@ -1,13 +1,13 @@
 from datetime import datetime
 from typing import Optional
-from beanie import Document, Indexed
+from beanie import Document
 from pydantic import Field
 from pymongo import IndexModel, ASCENDING
 
 
 class User(Document):
     full_name: Optional[str] = None
-    email: Indexed(str, unique=True)
+    email: str
     hashed_password: str
     phone_number: Optional[str] = None
     currency: str = "INR"

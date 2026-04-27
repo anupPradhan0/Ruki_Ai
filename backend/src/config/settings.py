@@ -16,7 +16,7 @@ class Settings(BaseSettings):
     EMAIL_RECEIVER: str
     APP_ENV: str = "development"
 
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
 
 @lru_cache
