@@ -84,6 +84,7 @@ class UnemployedProfileSummary(BaseModel):
 
 class UnemployedDashboardResponse(BaseModel):
     needs_onboarding: bool = False
+    quiz_completed: bool = False
     user: Optional[UserSummary] = None
     unemployed: Optional[UnemployedProfileSummary] = None
     ai_advice: Optional[str] = None

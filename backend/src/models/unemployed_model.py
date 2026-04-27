@@ -21,6 +21,7 @@ from src.models.sub_documents import (
     FinancialGoal,
     JobSearchDetails,
     SupportResources,
+    QuizAnswer,
 )
 
 
@@ -47,6 +48,7 @@ class UnemployedData(Document):
     job_search_details: Optional[JobSearchDetails] = None
     summary_frequency: Optional[SummaryFrequency] = None
     support_resources: Optional[SupportResources] = None
+    quiz_responses: List[QuizAnswer] = Field(default_factory=list)
     ai_advice: Optional[str] = None
     ai_advice_generated_at: Optional[datetime] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)

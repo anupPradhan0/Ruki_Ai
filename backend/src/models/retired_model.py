@@ -15,6 +15,7 @@ from src.models.sub_documents import (
     OtherAsset,
     SavingsGoal,
     LegacyPlanning,
+    QuizAnswer,
 )
 
 
@@ -30,6 +31,7 @@ class RetiredData(Document):
     other_assets: List[OtherAsset] = Field(default_factory=list)
     savings_goals: List[SavingsGoal] = Field(default_factory=list)
     legacy_planning: Optional[LegacyPlanning] = None
+    quiz_responses: List[QuizAnswer] = Field(default_factory=list)
     ai_advice: Optional[str] = None
     ai_advice_generated_at: Optional[datetime] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)

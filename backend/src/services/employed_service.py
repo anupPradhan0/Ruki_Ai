@@ -80,4 +80,5 @@ async def get_employed_dashboard(user_id: PydanticObjectId) -> EmployedDashboard
         user=UserSummary.model_validate(user),
         employed=EmployedProfileSummary.model_validate(employed),
         ai_advice=employed.ai_advice,
+        quiz_completed=bool(getattr(employed, "quiz_responses", None)),
     )

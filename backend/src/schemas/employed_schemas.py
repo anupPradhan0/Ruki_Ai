@@ -63,6 +63,7 @@ class EmployedProfileSummary(BaseModel):
 
 class EmployedDashboardResponse(BaseModel):
     needs_onboarding: bool = False
+    quiz_completed: bool = False
     user: Optional[UserSummary] = None
     employed: Optional[EmployedProfileSummary] = None
     ai_advice: Optional[str] = None

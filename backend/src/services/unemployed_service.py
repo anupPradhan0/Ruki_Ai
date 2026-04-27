@@ -88,4 +88,5 @@ async def get_unemployed_dashboard(user_id: PydanticObjectId) -> UnemployedDashb
         user=UserSummary.model_validate(user),
         unemployed=UnemployedProfileSummary.model_validate(unemployed),
         ai_advice=unemployed.ai_advice,
+        quiz_completed=bool(getattr(unemployed, "quiz_responses", None)),
     )

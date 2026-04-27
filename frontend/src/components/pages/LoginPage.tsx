@@ -29,12 +29,12 @@ export default function LoginPage() {
         return { redirect: "/onboarding" as const }
       }
 
-      // Otherwise, ask the backend whether onboarding is complete
+      // Otherwise, ask the backend whether onboarding + quiz are complete
       try {
         const dash = await api.getDashboard(userType)
-        return {
-          redirect: dash.needs_onboarding ? ("/onboarding" as const) : ("/dashboard" as const),
-        }
+        if (dash.needs_onboarding) return { redirect: "/onboarding" as const }
+        if (!dash.quiz_completed) return { redirect: "/quiz" as const }
+        return { redirect: "/dashboard" as const }
       } catch {
         // If the dashboard call fails, fall back to onboarding so the user can finish
         return { redirect: "/onboarding" as const }

@@ -12,6 +12,7 @@ from src.models.sub_documents import (
     BudgetLimit,
     FinancialGoal,
     InvestmentPreferences,
+    QuizAnswer,
 )
 
 
@@ -32,6 +33,7 @@ class EmployedData(Document):
     financial_goals: List[FinancialGoal] = Field(default_factory=list)
     summary_frequency: Optional[SummaryFrequency] = None
     investment_preferences: Optional[InvestmentPreferences] = None
+    quiz_responses: List[QuizAnswer] = Field(default_factory=list)
     ai_advice: Optional[str] = None
     ai_advice_generated_at: Optional[datetime] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)

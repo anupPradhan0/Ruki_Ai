@@ -48,6 +48,7 @@ class StudentProfileSummary(BaseModel):
 
 class StudentDashboardResponse(BaseModel):
     needs_onboarding: bool = False
+    quiz_completed: bool = False
     user: Optional[UserSummary] = None
     student: Optional[StudentProfileSummary] = None
     ai_advice: Optional[str] = None

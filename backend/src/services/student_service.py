@@ -90,4 +90,5 @@ async def get_student_dashboard(user_id: PydanticObjectId) -> StudentDashboardRe
         user=UserSummary.model_validate(user),
         student=StudentProfileSummary.model_validate(student),
         ai_advice=student.ai_advice,
+        quiz_completed=bool(getattr(student, "quiz_responses", None)),
     )

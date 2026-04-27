@@ -56,6 +56,7 @@ class RetiredProfileSummary(BaseModel):
 
 class RetiredDashboardResponse(BaseModel):
     needs_onboarding: bool = False
+    quiz_completed: bool = False
     user: Optional[UserSummary] = None
     retired: Optional[RetiredProfileSummary] = None
     ai_advice: Optional[str] = None

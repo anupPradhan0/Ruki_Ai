@@ -51,6 +51,13 @@ def _extract_essential_fields(profile: Any, user_type: str) -> dict:
         data["current_status"] = profile_dict.get("current_status")
         data["help_preferences"] = profile_dict.get("help_preferences")
 
+    # Quiz responses (10 MCQ self-assessment) — apply for any user type that has them.
+    quiz = profile_dict.get("quiz_responses")
+    if quiz:
+        data["self_assessment"] = [
+            {"q": q.get("question"), "a": q.get("answer")} for q in quiz
+        ]
+
     return {k: v for k, v in data.items() if v is not None}
 
 

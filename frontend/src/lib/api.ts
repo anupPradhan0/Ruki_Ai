@@ -312,6 +312,7 @@ export interface RetiredForm {
 
 export interface DashboardResponse {
   needs_onboarding: boolean
+  quiz_completed?: boolean
   user?: { email: string; full_name?: string; currency?: string }
   ai_advice?: string
   student?: unknown
@@ -364,6 +365,17 @@ export const api = {
 
   getDashboard: (type: UserType) =>
     request<DashboardResponse>(`/dashboard/${type}`),
+
+  submitQuiz: (type: UserType, answers: QuizAnswer[]) =>
+    request<{ message: string; user_type: string }>(`/quiz/${type}`, {
+      method: "POST",
+      body: JSON.stringify({ user_id: session.read()?.user_id, answers }),
+    }),
+}
+
+export interface QuizAnswer {
+  question: string
+  answer: string
 }
 
 // ── Local session helpers ─────────────────────────────────────────────────

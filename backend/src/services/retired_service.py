@@ -73,4 +73,5 @@ async def get_retired_dashboard(user_id: PydanticObjectId) -> RetiredDashboardRe
         user=UserSummary.model_validate(user),
         retired=RetiredProfileSummary.model_validate(retired),
         ai_advice=retired.ai_advice,
+        quiz_completed=bool(getattr(retired, "quiz_responses", None)),
     )

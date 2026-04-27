@@ -80,7 +80,7 @@ function SubmitButton({ pending }: { pending: boolean }) {
       className="w-full py-3.5 bg-[#FFD700] text-black font-semibold rounded-xl hover:bg-[#e6c200] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
     >
       {pending && <Loader2 size={16} className="animate-spin" />}
-      {pending ? "Saving..." : "Continue to dashboard"}
+      {pending ? "Saving..." : "Continue to quick quiz"}
     </button>
   )
 }
@@ -500,7 +500,7 @@ function StudentFormView({ userId }: { userId: string }) {
         custom_categories: cleanCategories(form.custom_categories ?? []),
         financial_goals: cleanGoals(form.financial_goals ?? []),
       }),
-    onSuccess: () => navigate({ to: "/dashboard" }),
+    onSuccess: () => navigate({ to: "/quiz" }),
   })
 
   return (
@@ -684,7 +684,7 @@ function EmployedFormView({ userId }: { userId: string }) {
             : null,
       })
     },
-    onSuccess: () => navigate({ to: "/dashboard" }),
+    onSuccess: () => navigate({ to: "/quiz" }),
   })
 
   return (
@@ -966,7 +966,7 @@ function UnemployedFormView({ userId }: { userId: string }) {
         job_search_details: cleanedJob,
       })
     },
-    onSuccess: () => navigate({ to: "/dashboard" }),
+    onSuccess: () => navigate({ to: "/quiz" }),
   })
 
   return (
@@ -1378,7 +1378,7 @@ function RetiredFormView({ userId }: { userId: string }) {
         legacy_planning: { beneficiaries },
       })
     },
-    onSuccess: () => navigate({ to: "/dashboard" }),
+    onSuccess: () => navigate({ to: "/quiz" }),
   })
 
   return (

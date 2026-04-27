@@ -10,7 +10,7 @@ from src.models.enums import (
     ParentFunded,
     SummaryFrequency,
 )
-from src.models.sub_documents import CustomCategory, FinancialGoal
+from src.models.sub_documents import CustomCategory, FinancialGoal, QuizAnswer
 
 
 class StudentData(Document):
@@ -23,6 +23,7 @@ class StudentData(Document):
     custom_categories: List[CustomCategory] = Field(default_factory=list)
     financial_goals: List[FinancialGoal] = Field(default_factory=list)
     summary_frequency: SummaryFrequency = SummaryFrequency.DAILY
+    quiz_responses: List[QuizAnswer] = Field(default_factory=list)
     ai_advice: Optional[str] = None
     ai_advice_generated_at: Optional[datetime] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)

@@ -16,6 +16,7 @@ import { Route as LayoutHowItWorksRouteImport } from './routes/_layout/how-it-wo
 import { Route as LayoutFeaturesRouteImport } from './routes/_layout/features'
 import { Route as LayoutAboutRouteImport } from './routes/_layout/about'
 import { Route as AuthSignupRouteImport } from './routes/_auth/signup'
+import { Route as AuthQuizRouteImport } from './routes/_auth/quiz'
 import { Route as AuthOnboardingRouteImport } from './routes/_auth/onboarding'
 import { Route as AuthLoginRouteImport } from './routes/_auth/login'
 import { Route as AuthDashboardRouteImport } from './routes/_auth/dashboard'
@@ -53,6 +54,11 @@ const AuthSignupRoute = AuthSignupRouteImport.update({
   path: '/signup',
   getParentRoute: () => AuthRoute,
 } as any)
+const AuthQuizRoute = AuthQuizRouteImport.update({
+  id: '/quiz',
+  path: '/quiz',
+  getParentRoute: () => AuthRoute,
+} as any)
 const AuthOnboardingRoute = AuthOnboardingRouteImport.update({
   id: '/onboarding',
   path: '/onboarding',
@@ -74,6 +80,7 @@ export interface FileRoutesByFullPath {
   '/dashboard': typeof AuthDashboardRoute
   '/login': typeof AuthLoginRoute
   '/onboarding': typeof AuthOnboardingRoute
+  '/quiz': typeof AuthQuizRoute
   '/signup': typeof AuthSignupRoute
   '/about': typeof LayoutAboutRoute
   '/features': typeof LayoutFeaturesRoute
@@ -84,6 +91,7 @@ export interface FileRoutesByTo {
   '/dashboard': typeof AuthDashboardRoute
   '/login': typeof AuthLoginRoute
   '/onboarding': typeof AuthOnboardingRoute
+  '/quiz': typeof AuthQuizRoute
   '/signup': typeof AuthSignupRoute
   '/about': typeof LayoutAboutRoute
   '/features': typeof LayoutFeaturesRoute
@@ -96,6 +104,7 @@ export interface FileRoutesById {
   '/_auth/dashboard': typeof AuthDashboardRoute
   '/_auth/login': typeof AuthLoginRoute
   '/_auth/onboarding': typeof AuthOnboardingRoute
+  '/_auth/quiz': typeof AuthQuizRoute
   '/_auth/signup': typeof AuthSignupRoute
   '/_layout/about': typeof LayoutAboutRoute
   '/_layout/features': typeof LayoutFeaturesRoute
@@ -109,6 +118,7 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/login'
     | '/onboarding'
+    | '/quiz'
     | '/signup'
     | '/about'
     | '/features'
@@ -119,6 +129,7 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/login'
     | '/onboarding'
+    | '/quiz'
     | '/signup'
     | '/about'
     | '/features'
@@ -130,6 +141,7 @@ export interface FileRouteTypes {
     | '/_auth/dashboard'
     | '/_auth/login'
     | '/_auth/onboarding'
+    | '/_auth/quiz'
     | '/_auth/signup'
     | '/_layout/about'
     | '/_layout/features'
@@ -193,6 +205,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthSignupRouteImport
       parentRoute: typeof AuthRoute
     }
+    '/_auth/quiz': {
+      id: '/_auth/quiz'
+      path: '/quiz'
+      fullPath: '/quiz'
+      preLoaderRoute: typeof AuthQuizRouteImport
+      parentRoute: typeof AuthRoute
+    }
     '/_auth/onboarding': {
       id: '/_auth/onboarding'
       path: '/onboarding'
@@ -221,6 +240,7 @@ interface AuthRouteChildren {
   AuthDashboardRoute: typeof AuthDashboardRoute
   AuthLoginRoute: typeof AuthLoginRoute
   AuthOnboardingRoute: typeof AuthOnboardingRoute
+  AuthQuizRoute: typeof AuthQuizRoute
   AuthSignupRoute: typeof AuthSignupRoute
 }
 
@@ -228,6 +248,7 @@ const AuthRouteChildren: AuthRouteChildren = {
   AuthDashboardRoute: AuthDashboardRoute,
   AuthLoginRoute: AuthLoginRoute,
   AuthOnboardingRoute: AuthOnboardingRoute,
+  AuthQuizRoute: AuthQuizRoute,
   AuthSignupRoute: AuthSignupRoute,
 }
 

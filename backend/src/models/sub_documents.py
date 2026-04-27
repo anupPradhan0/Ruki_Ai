@@ -171,6 +171,13 @@ class LegacyPlanning(_Base):
     beneficiaries: List[Beneficiary] = Field(default_factory=list)
 
 
+# ── Quiz ───────────────────────────────────────────────────────────────────
+
+class QuizAnswer(_Base):
+    question: str = Field(min_length=1, max_length=300)
+    answer: str = Field(min_length=1, max_length=300)
+
+
 # ── Guest ──────────────────────────────────────────────────────────────────
 
 class GuestFinancialGoal(_Base):
