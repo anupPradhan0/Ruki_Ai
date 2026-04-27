@@ -15,7 +15,7 @@ from src.repositories.student_repository import (
     append_student_goals_and_categories,
 )
 from src.repositories.user_repository import find_user_by_id, update_user_type
-from src.utils.cohere_utils import get_ai_advice
+from src.utils.gemma_utils import get_ai_advice
 from src.models.enums import UserType
 
 _STALE_DAYS = 7

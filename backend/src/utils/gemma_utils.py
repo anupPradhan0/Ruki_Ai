@@ -1,5 +1,5 @@
-from typing import Any, Optional
-import cohere
+from typing import Any
+import httpx
 from src.config.settings import get_settings
 
 
@@ -12,7 +12,6 @@ def _extract_essential_fields(profile: Any, user_type: str) -> dict:
 
     profile_dict = profile.model_dump() if hasattr(profile, "model_dump") else {}
 
-    # Common fields
     for src, dest in [
         ("monthly_allowance", "income"),
         ("monthly_salary", "income"),
@@ -24,7 +23,6 @@ def _extract_essential_fields(profile: Any, user_type: str) -> dict:
         if val is not None:
             data[dest] = val
 
-    # Type-specific fields
     if user_type == "student":
         data["education"] = profile_dict.get("education_level")
         data["living_situation"] = profile_dict.get("living_situation")
@@ -51,7 +49,6 @@ def _extract_essential_fields(profile: Any, user_type: str) -> dict:
         data["current_status"] = profile_dict.get("current_status")
         data["help_preferences"] = profile_dict.get("help_preferences")
 
-    # Quiz responses (10 MCQ self-assessment) — apply for any user type that has them.
     quiz = profile_dict.get("quiz_responses")
     if quiz:
         data["self_assessment"] = [
@@ -62,7 +59,6 @@ def _extract_essential_fields(profile: Any, user_type: str) -> dict:
 
 
 def _build_prompt(user_type: str, data: dict) -> str:
-    """Build the structured financial advice prompt matching the original JS template."""
     bullets = "\n".join(f"• {k}: {v}" for k, v in data.items())
     return f"""Generate personalized financial advice for a {user_type}.
 
@@ -88,64 +84,71 @@ FORMAT:
 Keep response concise and professional."""
 
 
-async def get_ai_chat_response(
-    profile: Any,
-    user_type: str,
-    history: list,
-    message: str,
-) -> str:
-    """Send a follow-up chat message to Cohere with profile context as preamble."""
-    settings = get_settings()
-    client = cohere.AsyncClient(api_key=settings.COHERE_API_KEY)
-    data = _extract_essential_fields(profile, user_type)
-
-    preamble = (
+def _build_system_preamble(user_type: str, data: dict) -> str:
+    return (
         f"You are RukiAI, a personal finance advisor for a {user_type} user.\n"
         f"Their profile data: {data}.\n"
         "Give specific, actionable, numbers-backed advice. Keep replies concise "
         "(under 200 words unless the user asks for detail). Use bullets when listing."
     )
 
-    chat_history = [
-        {
-            "role": "USER" if (h.get("role") or "").lower() == "user" else "CHATBOT",
-            "message": h.get("content", ""),
-        }
-        for h in (history or [])
-        if h.get("content")
-    ]
-
-    try:
-        response = await client.chat(
-            model="command-r-plus",
-            message=message,
-            chat_history=chat_history,
-            preamble=preamble,
-            max_tokens=400,
-            temperature=0.7,
-        )
-        return (response.text or "").strip() or "Sorry, I couldn't generate a reply."
-    except Exception as exc:
-        print(f"Cohere chat error: {exc}")
-        return "I'm having trouble responding right now. Please try again."
-
 
 async def get_ai_advice(profile: Any, user_type: str) -> str:
-    """Call Cohere command-r-plus to generate personalised financial advice."""
+    """Generate one-shot financial advice via local Ollama (Gemma 4 E2B)."""
     settings = get_settings()
-    client = cohere.AsyncClient(api_key=settings.COHERE_API_KEY)
     data = _extract_essential_fields(profile, user_type)
     prompt = _build_prompt(user_type, data)
 
+    payload = {
+        "model": settings.OLLAMA_MODEL,
+        "prompt": prompt,
+        "stream": False,
+        "options": {"temperature": 0.9, "num_predict": 300},
+    }
+
     try:
-        response = await client.generate(
-            model="command-r-plus",
-            prompt=prompt,
-            max_tokens=300,
-            temperature=0.9,
-        )
-        text = response.generations[0].text if response.generations else ""
-        return text.strip() or "Unable to generate financial advice at this time."
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            r = await client.post(f"{settings.OLLAMA_HOST}/api/generate", json=payload)
+            r.raise_for_status()
+            text = (r.json().get("response") or "").strip()
+            return text or "Unable to generate financial advice at this time."
     except Exception as exc:
-        print(f"Cohere error: {exc}")
+        print(f"Ollama generate error: {exc}")
         return "Unable to generate financial advice at this time. Please try again later."
+
+
+async def get_ai_chat_response(
+    profile: Any,
+    user_type: str,
+    history: list,
+    message: str,
+) -> str:
+    """Conversational reply via local Ollama chat API with profile context."""
+    settings = get_settings()
+    data = _extract_essential_fields(profile, user_type)
+
+    messages = [{"role": "system", "content": _build_system_preamble(user_type, data)}]
+    for h in history or []:
+        content = h.get("content")
+        if not content:
+            continue
+        role = "user" if (h.get("role") or "").lower() == "user" else "assistant"
+        messages.append({"role": role, "content": content})
+    messages.append({"role": "user", "content": message})
+
+    payload = {
+        "model": settings.OLLAMA_MODEL,
+        "messages": messages,
+        "stream": False,
+        "options": {"temperature": 0.7, "num_predict": 400},
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            r = await client.post(f"{settings.OLLAMA_HOST}/api/chat", json=payload)
+            r.raise_for_status()
+            text = ((r.json().get("message") or {}).get("content") or "").strip()
+            return text or "Sorry, I couldn't generate a reply."
+    except Exception as exc:
+        print(f"Ollama chat error: {exc}")
+        return "I'm having trouble responding right now. Please try again."

@@ -6,7 +6,7 @@ from src.repositories.student_repository import find_student_by_user_id
 from src.repositories.employed_repository import find_employed_by_user_id
 from src.repositories.unemployed_repository import find_unemployed_by_user_id
 from src.repositories.retired_repository import find_retired_by_user_id
-from src.utils.cohere_utils import get_ai_chat_response
+from src.utils.gemma_utils import get_ai_chat_response
 
 
 _FINDERS = {
