@@ -9,6 +9,7 @@ from src.routers.user_type_router import router as user_type_router
 from src.routers.dashboard_router import router as dashboard_router
 from src.routers.feedback_router import router as feedback_router
 from src.routers.quiz_router import router as quiz_router
+from src.routers.chat_router import router as chat_router
 
 
 @asynccontextmanager
@@ -40,6 +41,7 @@ app.include_router(user_type_router)
 app.include_router(dashboard_router)
 app.include_router(feedback_router)
 app.include_router(quiz_router)
+app.include_router(chat_router)
 
 
 if __name__ == "__main__":

@@ -19,6 +19,7 @@ from src.models.sub_documents import (
     FinancialGoal,
     JobSearchDetails,
     SupportResources,
+    QuizAnswer,
 )
 from src.schemas.common_schemas import UserSummary
 
@@ -76,6 +77,7 @@ class UnemployedProfileSummary(BaseModel):
     job_search_details: Optional[JobSearchDetails] = None
     summary_frequency: Optional[SummaryFrequency] = None
     support_resources: Optional[SupportResources] = None
+    quiz_responses: List[QuizAnswer] = []
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 

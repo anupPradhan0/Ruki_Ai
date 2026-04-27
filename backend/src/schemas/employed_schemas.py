@@ -10,6 +10,7 @@ from src.models.sub_documents import (
     BudgetLimit,
     FinancialGoal,
     InvestmentPreferences,
+    QuizAnswer,
 )
 from src.schemas.common_schemas import UserSummary
 
@@ -55,6 +56,7 @@ class EmployedProfileSummary(BaseModel):
     financial_goals: List[FinancialGoal] = []
     summary_frequency: Optional[SummaryFrequency] = None
     investment_preferences: Optional[InvestmentPreferences] = None
+    quiz_responses: List[QuizAnswer] = []
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 

@@ -9,9 +9,12 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as LayoutRouteImport } from './routes/_layout'
 import { Route as AuthRouteImport } from './routes/_auth'
+import { Route as DashboardIndexRouteImport } from './routes/dashboard/index'
 import { Route as LayoutIndexRouteImport } from './routes/_layout/index'
+import { Route as DashboardChatRouteImport } from './routes/dashboard/chat'
 import { Route as LayoutHowItWorksRouteImport } from './routes/_layout/how-it-works'
 import { Route as LayoutFeaturesRouteImport } from './routes/_layout/features'
 import { Route as LayoutAboutRouteImport } from './routes/_layout/about'
@@ -19,8 +22,12 @@ import { Route as AuthSignupRouteImport } from './routes/_auth/signup'
 import { Route as AuthQuizRouteImport } from './routes/_auth/quiz'
 import { Route as AuthOnboardingRouteImport } from './routes/_auth/onboarding'
 import { Route as AuthLoginRouteImport } from './routes/_auth/login'
-import { Route as AuthDashboardRouteImport } from './routes/_auth/dashboard'
 
+const DashboardRoute = DashboardRouteImport.update({
+  id: '/dashboard',
+  path: '/dashboard',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const LayoutRoute = LayoutRouteImport.update({
   id: '/_layout',
   getParentRoute: () => rootRouteImport,
@@ -29,10 +36,20 @@ const AuthRoute = AuthRouteImport.update({
   id: '/_auth',
   getParentRoute: () => rootRouteImport,
 } as any)
+const DashboardIndexRoute = DashboardIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => DashboardRoute,
+} as any)
 const LayoutIndexRoute = LayoutIndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => LayoutRoute,
+} as any)
+const DashboardChatRoute = DashboardChatRouteImport.update({
+  id: '/chat',
+  path: '/chat',
+  getParentRoute: () => DashboardRoute,
 } as any)
 const LayoutHowItWorksRoute = LayoutHowItWorksRouteImport.update({
   id: '/how-it-works',
@@ -69,15 +86,10 @@ const AuthLoginRoute = AuthLoginRouteImport.update({
   path: '/login',
   getParentRoute: () => AuthRoute,
 } as any)
-const AuthDashboardRoute = AuthDashboardRouteImport.update({
-  id: '/dashboard',
-  path: '/dashboard',
-  getParentRoute: () => AuthRoute,
-} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof LayoutIndexRoute
-  '/dashboard': typeof AuthDashboardRoute
+  '/dashboard': typeof DashboardRouteWithChildren
   '/login': typeof AuthLoginRoute
   '/onboarding': typeof AuthOnboardingRoute
   '/quiz': typeof AuthQuizRoute
@@ -85,10 +97,11 @@ export interface FileRoutesByFullPath {
   '/about': typeof LayoutAboutRoute
   '/features': typeof LayoutFeaturesRoute
   '/how-it-works': typeof LayoutHowItWorksRoute
+  '/dashboard/chat': typeof DashboardChatRoute
+  '/dashboard/': typeof DashboardIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof LayoutIndexRoute
-  '/dashboard': typeof AuthDashboardRoute
   '/login': typeof AuthLoginRoute
   '/onboarding': typeof AuthOnboardingRoute
   '/quiz': typeof AuthQuizRoute
@@ -96,12 +109,14 @@ export interface FileRoutesByTo {
   '/about': typeof LayoutAboutRoute
   '/features': typeof LayoutFeaturesRoute
   '/how-it-works': typeof LayoutHowItWorksRoute
+  '/dashboard/chat': typeof DashboardChatRoute
+  '/dashboard': typeof DashboardIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_auth': typeof AuthRouteWithChildren
   '/_layout': typeof LayoutRouteWithChildren
-  '/_auth/dashboard': typeof AuthDashboardRoute
+  '/dashboard': typeof DashboardRouteWithChildren
   '/_auth/login': typeof AuthLoginRoute
   '/_auth/onboarding': typeof AuthOnboardingRoute
   '/_auth/quiz': typeof AuthQuizRoute
@@ -109,7 +124,9 @@ export interface FileRoutesById {
   '/_layout/about': typeof LayoutAboutRoute
   '/_layout/features': typeof LayoutFeaturesRoute
   '/_layout/how-it-works': typeof LayoutHowItWorksRoute
+  '/dashboard/chat': typeof DashboardChatRoute
   '/_layout/': typeof LayoutIndexRoute
+  '/dashboard/': typeof DashboardIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -123,10 +140,11 @@ export interface FileRouteTypes {
     | '/about'
     | '/features'
     | '/how-it-works'
+    | '/dashboard/chat'
+    | '/dashboard/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
-    | '/dashboard'
     | '/login'
     | '/onboarding'
     | '/quiz'
@@ -134,11 +152,13 @@ export interface FileRouteTypes {
     | '/about'
     | '/features'
     | '/how-it-works'
+    | '/dashboard/chat'
+    | '/dashboard'
   id:
     | '__root__'
     | '/_auth'
     | '/_layout'
-    | '/_auth/dashboard'
+    | '/dashboard'
     | '/_auth/login'
     | '/_auth/onboarding'
     | '/_auth/quiz'
@@ -146,16 +166,26 @@ export interface FileRouteTypes {
     | '/_layout/about'
     | '/_layout/features'
     | '/_layout/how-it-works'
+    | '/dashboard/chat'
     | '/_layout/'
+    | '/dashboard/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   AuthRoute: typeof AuthRouteWithChildren
   LayoutRoute: typeof LayoutRouteWithChildren
+  DashboardRoute: typeof DashboardRouteWithChildren
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/dashboard': {
+      id: '/dashboard'
+      path: '/dashboard'
+      fullPath: '/dashboard'
+      preLoaderRoute: typeof DashboardRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/_layout': {
       id: '/_layout'
       path: ''
@@ -170,12 +200,26 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/dashboard/': {
+      id: '/dashboard/'
+      path: '/'
+      fullPath: '/dashboard/'
+      preLoaderRoute: typeof DashboardIndexRouteImport
+      parentRoute: typeof DashboardRoute
+    }
     '/_layout/': {
       id: '/_layout/'
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof LayoutIndexRouteImport
       parentRoute: typeof LayoutRoute
+    }
+    '/dashboard/chat': {
+      id: '/dashboard/chat'
+      path: '/chat'
+      fullPath: '/dashboard/chat'
+      preLoaderRoute: typeof DashboardChatRouteImport
+      parentRoute: typeof DashboardRoute
     }
     '/_layout/how-it-works': {
       id: '/_layout/how-it-works'
@@ -226,18 +270,10 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthLoginRouteImport
       parentRoute: typeof AuthRoute
     }
-    '/_auth/dashboard': {
-      id: '/_auth/dashboard'
-      path: '/dashboard'
-      fullPath: '/dashboard'
-      preLoaderRoute: typeof AuthDashboardRouteImport
-      parentRoute: typeof AuthRoute
-    }
   }
 }
 
 interface AuthRouteChildren {
-  AuthDashboardRoute: typeof AuthDashboardRoute
   AuthLoginRoute: typeof AuthLoginRoute
   AuthOnboardingRoute: typeof AuthOnboardingRoute
   AuthQuizRoute: typeof AuthQuizRoute
@@ -245,7 +281,6 @@ interface AuthRouteChildren {
 }
 
 const AuthRouteChildren: AuthRouteChildren = {
-  AuthDashboardRoute: AuthDashboardRoute,
   AuthLoginRoute: AuthLoginRoute,
   AuthOnboardingRoute: AuthOnboardingRoute,
   AuthQuizRoute: AuthQuizRoute,
@@ -271,9 +306,24 @@ const LayoutRouteChildren: LayoutRouteChildren = {
 const LayoutRouteWithChildren =
   LayoutRoute._addFileChildren(LayoutRouteChildren)
 
+interface DashboardRouteChildren {
+  DashboardChatRoute: typeof DashboardChatRoute
+  DashboardIndexRoute: typeof DashboardIndexRoute
+}
+
+const DashboardRouteChildren: DashboardRouteChildren = {
+  DashboardChatRoute: DashboardChatRoute,
+  DashboardIndexRoute: DashboardIndexRoute,
+}
+
+const DashboardRouteWithChildren = DashboardRoute._addFileChildren(
+  DashboardRouteChildren,
+)
+
 const rootRouteChildren: RootRouteChildren = {
   AuthRoute: AuthRouteWithChildren,
   LayoutRoute: LayoutRouteWithChildren,
+  DashboardRoute: DashboardRouteWithChildren,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

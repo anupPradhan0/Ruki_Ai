@@ -8,7 +8,7 @@ from src.models.enums import (
     ParentFunded,
     SummaryFrequency,
 )
-from src.models.sub_documents import CustomCategory, FinancialGoal
+from src.models.sub_documents import CustomCategory, FinancialGoal, QuizAnswer
 from src.schemas.common_schemas import UserSummary
 
 
@@ -40,6 +40,7 @@ class StudentProfileSummary(BaseModel):
     custom_categories: List[CustomCategory] = []
     financial_goals: List[FinancialGoal] = []
     summary_frequency: SummaryFrequency
+    quiz_responses: List[QuizAnswer] = []
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 

@@ -308,6 +308,86 @@ export interface RetiredForm {
   legacy_planning?: LegacyPlanning | null
 }
 
+// ── Profile summaries (mirror of backend ProfileSummary schemas) ─────────
+
+export interface StudentProfile {
+  education_level: EducationLevel
+  institution_name?: string
+  living_situation: StudentLivingSituation
+  monthly_allowance?: number
+  is_parent_funded: ParentFunded
+  custom_categories?: CustomCategory[]
+  financial_goals?: FinancialGoal[]
+  summary_frequency: SummaryFrequency
+  quiz_responses?: { question: string; answer: string }[]
+  created_at?: string
+  updated_at?: string
+}
+
+export interface EmployedProfile {
+  job_title?: string
+  employment_type?: EmploymentType
+  company?: string
+  work_industry?: string
+  work_location?: string
+  monthly_salary?: number
+  pay_frequency?: PayFrequency
+  additional_income_sources?: IncomeSource[]
+  has_bonuses?: boolean
+  bonus_details?: BonusDetails | null
+  fixed_expenses?: FixedExpense[]
+  budget_limits?: BudgetLimit[]
+  financial_goals?: FinancialGoal[]
+  summary_frequency?: SummaryFrequency
+  investment_preferences?: InvestmentPreferences | null
+  quiz_responses?: { question: string; answer: string }[]
+  created_at?: string
+  updated_at?: string
+}
+
+export interface UnemployedProfile {
+  employment_status?: EmploymentStatus
+  last_job_details?: LastJobDetails | null
+  current_income?: number
+  income_sources?: IncomeSource[]
+  debt?: DebtInfo | null
+  comfort_budget?: number
+  runway_estimate?: number
+  living_situation?: UnemployedLivingSituation
+  has_dependents?: boolean
+  dependents_count?: number
+  gig_interest?: GigInterest
+  has_tools?: boolean
+  willing_to_relocate?: boolean
+  goal_priority?: GoalPriority
+  savings_details?: SavingsDetails | null
+  regular_expenses?: RegularExpense[]
+  budget_limits?: BudgetLimit[]
+  financial_goals?: FinancialGoal[]
+  job_search_details?: JobSearchDetails | null
+  summary_frequency?: SummaryFrequency
+  support_resources?: SupportResources | null
+  quiz_responses?: { question: string; answer: string }[]
+  created_at?: string
+  updated_at?: string
+}
+
+export interface RetiredProfile {
+  pension?: PensionInfo | null
+  other_income_sources?: IncomeSource[]
+  retirement_account_withdrawals?: RetirementAccountWithdrawal[]
+  housing?: HousingInfo | null
+  healthcare?: HealthcareInfo | null
+  other_expenses?: OtherExpense[]
+  retirement_accounts?: RetirementAccount[]
+  other_assets?: OtherAsset[]
+  savings_goals?: SavingsGoal[]
+  legacy_planning?: LegacyPlanning | null
+  quiz_responses?: { question: string; answer: string }[]
+  created_at?: string
+  updated_at?: string
+}
+
 // ── Dashboard ────────────────────────────────────────────────────────────
 
 export interface DashboardResponse {
@@ -315,10 +395,10 @@ export interface DashboardResponse {
   quiz_completed?: boolean
   user?: { email: string; full_name?: string; currency?: string }
   ai_advice?: string
-  student?: unknown
-  employed?: unknown
-  unemployed?: unknown
-  retired?: unknown
+  student?: StudentProfile
+  employed?: EmployedProfile
+  unemployed?: UnemployedProfile
+  retired?: RetiredProfile
 }
 
 // ── Endpoints ────────────────────────────────────────────────────────────
@@ -371,11 +451,26 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ user_id: session.read()?.user_id, answers }),
     }),
+
+  chat: (type: UserType, message: string, history: ChatTurn[]) =>
+    request<{ reply: string }>(`/chat/${type}`, {
+      method: "POST",
+      body: JSON.stringify({
+        user_id: session.read()?.user_id,
+        message,
+        history,
+      }),
+    }),
 }
 
 export interface QuizAnswer {
   question: string
   answer: string
+}
+
+export interface ChatTurn {
+  role: "user" | "assistant"
+  content: string
 }
 
 // ── Local session helpers ─────────────────────────────────────────────────

@@ -88,6 +88,48 @@ FORMAT:
 Keep response concise and professional."""
 
 
+async def get_ai_chat_response(
+    profile: Any,
+    user_type: str,
+    history: list,
+    message: str,
+) -> str:
+    """Send a follow-up chat message to Cohere with profile context as preamble."""
+    settings = get_settings()
+    client = cohere.AsyncClient(api_key=settings.COHERE_API_KEY)
+    data = _extract_essential_fields(profile, user_type)
+
+    preamble = (
+        f"You are RukiAI, a personal finance advisor for a {user_type} user.\n"
+        f"Their profile data: {data}.\n"
+        "Give specific, actionable, numbers-backed advice. Keep replies concise "
+        "(under 200 words unless the user asks for detail). Use bullets when listing."
+    )
+
+    chat_history = [
+        {
+            "role": "USER" if (h.get("role") or "").lower() == "user" else "CHATBOT",
+            "message": h.get("content", ""),
+        }
+        for h in (history or [])
+        if h.get("content")
+    ]
+
+    try:
+        response = await client.chat(
+            model="command-r-plus",
+            message=message,
+            chat_history=chat_history,
+            preamble=preamble,
+            max_tokens=400,
+            temperature=0.7,
+        )
+        return (response.text or "").strip() or "Sorry, I couldn't generate a reply."
+    except Exception as exc:
+        print(f"Cohere chat error: {exc}")
+        return "I'm having trouble responding right now. Please try again."
+
+
 async def get_ai_advice(profile: Any, user_type: str) -> str:
     """Call Cohere command-r-plus to generate personalised financial advice."""
     settings = get_settings()

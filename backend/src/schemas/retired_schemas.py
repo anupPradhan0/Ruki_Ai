@@ -13,6 +13,7 @@ from src.models.sub_documents import (
     OtherAsset,
     SavingsGoal,
     LegacyPlanning,
+    QuizAnswer,
 )
 from src.schemas.common_schemas import UserSummary
 
@@ -48,6 +49,7 @@ class RetiredProfileSummary(BaseModel):
     other_assets: List[OtherAsset] = []
     savings_goals: List[SavingsGoal] = []
     legacy_planning: Optional[LegacyPlanning] = None
+    quiz_responses: List[QuizAnswer] = []
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
