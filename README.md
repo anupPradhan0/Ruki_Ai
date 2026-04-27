@@ -2,11 +2,13 @@
 
 > AI-powered personal finance tracker that helps students, employed people, freelancers, the unemployed, and retirees make smarter financial decisions through personalized advice powered by Cohere AI.
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 [![Python 3.11+](https://img.shields.io/badge/Python-3.11+-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
 [![React 18](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=white)](https://react.dev/)
 [![MongoDB](https://img.shields.io/badge/MongoDB-7-47A248?logo=mongodb&logoColor=white)](https://www.mongodb.com/)
 [![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)](https://docs.docker.com/compose/)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/)
 
 ---
 
@@ -126,6 +128,30 @@ The interactive API explorer is always at **http://localhost:8000/docs** when th
 
 ---
 
+## Contributing
+
+Contributions are welcome. This project is fully open source under the MIT license — feel free to fork, modify, and submit pull requests.
+
+1. Fork the repo
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+---
+
 ## License
 
-MIT — built by [Anup Pradhan](https://github.com/) (Mors)
+This project is licensed under the **MIT License** — see the [LICENSE](./LICENSE) file for the full text.
+
+The MIT License is a permissive open-source license that lets you:
+- ✅ Use commercially
+- ✅ Modify
+- ✅ Distribute
+- ✅ Use privately
+
+The only requirement is including the original copyright and license notice in any copy of the project.
+
+---
+
+Built by **[Anup Pradhan](https://github.com/)** (Mors)
