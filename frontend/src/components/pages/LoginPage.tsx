@@ -2,7 +2,9 @@ import { Link, useNavigate } from "@tanstack/react-router"
 import { useState } from "react"
 import { useMutation } from "@tanstack/react-query"
 import { Eye, EyeOff, Loader2, AlertCircle } from "lucide-react"
-import { api, type LoginPayload } from "@/lib/api"
+import { api, session, type LoginPayload, type UserType } from "@/lib/api"
+
+const VALID_TYPES: UserType[] = ["student", "employed", "unemployed", "retired"]
 
 export default function LoginPage() {
   const navigate = useNavigate()
@@ -11,9 +13,35 @@ export default function LoginPage() {
   const [password, setPassword] = useState("")
 
   const login = useMutation({
-    mutationFn: (data: LoginPayload) => api.login(data),
-    onSuccess: () => {
-      navigate({ to: "/" })
+    mutationFn: async (data: LoginPayload) => {
+      const auth = await api.login(data)
+
+      if (auth.user_id) {
+        session.save({
+          user_id: auth.user_id,
+          user_type: (auth.user_type as UserType | undefined) ?? undefined,
+        })
+      }
+
+      // No user_type set yet → user never finished onboarding
+      const userType = auth.user_type as UserType | undefined
+      if (!userType || !VALID_TYPES.includes(userType)) {
+        return { redirect: "/onboarding" as const }
+      }
+
+      // Otherwise, ask the backend whether onboarding is complete
+      try {
+        const dash = await api.getDashboard(userType)
+        return {
+          redirect: dash.needs_onboarding ? ("/onboarding" as const) : ("/dashboard" as const),
+        }
+      } catch {
+        // If the dashboard call fails, fall back to onboarding so the user can finish
+        return { redirect: "/onboarding" as const }
+      }
+    },
+    onSuccess: ({ redirect }) => {
+      navigate({ to: redirect })
     },
   })
 

@@ -16,7 +16,9 @@ import { Route as LayoutHowItWorksRouteImport } from './routes/_layout/how-it-wo
 import { Route as LayoutFeaturesRouteImport } from './routes/_layout/features'
 import { Route as LayoutAboutRouteImport } from './routes/_layout/about'
 import { Route as AuthSignupRouteImport } from './routes/_auth/signup'
+import { Route as AuthOnboardingRouteImport } from './routes/_auth/onboarding'
 import { Route as AuthLoginRouteImport } from './routes/_auth/login'
+import { Route as AuthDashboardRouteImport } from './routes/_auth/dashboard'
 
 const LayoutRoute = LayoutRouteImport.update({
   id: '/_layout',
@@ -51,15 +53,27 @@ const AuthSignupRoute = AuthSignupRouteImport.update({
   path: '/signup',
   getParentRoute: () => AuthRoute,
 } as any)
+const AuthOnboardingRoute = AuthOnboardingRouteImport.update({
+  id: '/onboarding',
+  path: '/onboarding',
+  getParentRoute: () => AuthRoute,
+} as any)
 const AuthLoginRoute = AuthLoginRouteImport.update({
   id: '/login',
   path: '/login',
   getParentRoute: () => AuthRoute,
 } as any)
+const AuthDashboardRoute = AuthDashboardRouteImport.update({
+  id: '/dashboard',
+  path: '/dashboard',
+  getParentRoute: () => AuthRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof LayoutIndexRoute
+  '/dashboard': typeof AuthDashboardRoute
   '/login': typeof AuthLoginRoute
+  '/onboarding': typeof AuthOnboardingRoute
   '/signup': typeof AuthSignupRoute
   '/about': typeof LayoutAboutRoute
   '/features': typeof LayoutFeaturesRoute
@@ -67,7 +81,9 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof LayoutIndexRoute
+  '/dashboard': typeof AuthDashboardRoute
   '/login': typeof AuthLoginRoute
+  '/onboarding': typeof AuthOnboardingRoute
   '/signup': typeof AuthSignupRoute
   '/about': typeof LayoutAboutRoute
   '/features': typeof LayoutFeaturesRoute
@@ -77,7 +93,9 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_auth': typeof AuthRouteWithChildren
   '/_layout': typeof LayoutRouteWithChildren
+  '/_auth/dashboard': typeof AuthDashboardRoute
   '/_auth/login': typeof AuthLoginRoute
+  '/_auth/onboarding': typeof AuthOnboardingRoute
   '/_auth/signup': typeof AuthSignupRoute
   '/_layout/about': typeof LayoutAboutRoute
   '/_layout/features': typeof LayoutFeaturesRoute
@@ -88,18 +106,30 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/dashboard'
     | '/login'
+    | '/onboarding'
     | '/signup'
     | '/about'
     | '/features'
     | '/how-it-works'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/login' | '/signup' | '/about' | '/features' | '/how-it-works'
+  to:
+    | '/'
+    | '/dashboard'
+    | '/login'
+    | '/onboarding'
+    | '/signup'
+    | '/about'
+    | '/features'
+    | '/how-it-works'
   id:
     | '__root__'
     | '/_auth'
     | '/_layout'
+    | '/_auth/dashboard'
     | '/_auth/login'
+    | '/_auth/onboarding'
     | '/_auth/signup'
     | '/_layout/about'
     | '/_layout/features'
@@ -163,6 +193,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthSignupRouteImport
       parentRoute: typeof AuthRoute
     }
+    '/_auth/onboarding': {
+      id: '/_auth/onboarding'
+      path: '/onboarding'
+      fullPath: '/onboarding'
+      preLoaderRoute: typeof AuthOnboardingRouteImport
+      parentRoute: typeof AuthRoute
+    }
     '/_auth/login': {
       id: '/_auth/login'
       path: '/login'
@@ -170,16 +207,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthLoginRouteImport
       parentRoute: typeof AuthRoute
     }
+    '/_auth/dashboard': {
+      id: '/_auth/dashboard'
+      path: '/dashboard'
+      fullPath: '/dashboard'
+      preLoaderRoute: typeof AuthDashboardRouteImport
+      parentRoute: typeof AuthRoute
+    }
   }
 }
 
 interface AuthRouteChildren {
+  AuthDashboardRoute: typeof AuthDashboardRoute
   AuthLoginRoute: typeof AuthLoginRoute
+  AuthOnboardingRoute: typeof AuthOnboardingRoute
   AuthSignupRoute: typeof AuthSignupRoute
 }
 
 const AuthRouteChildren: AuthRouteChildren = {
+  AuthDashboardRoute: AuthDashboardRoute,
   AuthLoginRoute: AuthLoginRoute,
+  AuthOnboardingRoute: AuthOnboardingRoute,
   AuthSignupRoute: AuthSignupRoute,
 }
 

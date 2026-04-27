@@ -2,7 +2,7 @@ import { Link, useNavigate } from "@tanstack/react-router"
 import { useState } from "react"
 import { useMutation } from "@tanstack/react-query"
 import { Eye, EyeOff, Loader2, AlertCircle } from "lucide-react"
-import { api, type SignupPayload } from "@/lib/api"
+import { api, session, type SignupPayload, type UserType } from "@/lib/api"
 
 const userTypes = [
   { label: "Student", value: "student" },
@@ -25,10 +25,13 @@ export default function SignupPage() {
   const signup = useMutation({
     mutationFn: (data: SignupPayload) => api.signup(data),
     onSuccess: (res) => {
-      // Cookie is now set; redirect to the matching onboarding page
-      const target = res.user_type ?? "student"
-      navigate({ to: "/" }) // for now go home — onboarding routes can be added later
-      console.log("Signup successful:", target)
+      if (res.user_id) {
+        session.save({
+          user_id: res.user_id,
+          user_type: (res.user_type as UserType | undefined) ?? (userType || undefined),
+        })
+      }
+      navigate({ to: "/onboarding" })
     },
   })
 
