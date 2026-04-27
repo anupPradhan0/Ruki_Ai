@@ -35,9 +35,187 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return data as T
 }
 
-// ── Types ─────────────────────────────────────────────────────────────────
+// ── Enums ─────────────────────────────────────────────────────────────────
 
 export type UserType = "student" | "employed" | "unemployed" | "retired"
+export type Priority = "high" | "medium" | "low"
+export type SummaryFrequency = "daily" | "weekly" | "bi-weekly" | "monthly" | "never"
+export type EducationLevel = "school" | "college" | "university" | "other"
+export type StudentLivingSituation = "hostel" | "family" | "rental" | "pg" | "other"
+export type ParentFunded = "yes" | "no" | "partially"
+export type EmploymentType =
+  | "full-time"
+  | "part-time"
+  | "contract"
+  | "self-employed"
+  | "freelance"
+export type PayFrequency =
+  | "weekly"
+  | "bi-weekly"
+  | "monthly"
+  | "semi-monthly"
+  | "annually"
+export type RiskTolerance = "low" | "medium" | "high"
+export type ExperienceLevel = "beginner" | "intermediate" | "expert"
+export type EmploymentStatus =
+  | "actively-seeking"
+  | "taking-break"
+  | "studying"
+  | "caring"
+  | "disabled"
+export type UnemployedLivingSituation = "alone" | "with-family" | "with-roommates"
+export type GigInterest = "not-at-all" | "somewhat" | "very-open"
+export type GoalPriority =
+  | "build-emergency-fund"
+  | "reduce-debt"
+  | "cover-rent"
+  | "invest-small"
+  | "learn-skill"
+
+// ── Sub-documents ────────────────────────────────────────────────────────
+
+export interface FinancialGoal {
+  name: string
+  target_amount: number
+  current_amount?: number
+  target_date?: string | null
+  priority?: Priority
+  progress?: number
+}
+
+export interface CustomCategory {
+  name: string
+  budget_limit: number
+  actual_spent?: number
+}
+
+export interface IncomeSource {
+  name?: string
+  source_type?: string
+  amount: number
+  frequency?: PayFrequency
+  description?: string
+}
+
+export interface FixedExpense {
+  category: string
+  amount: number
+  due_date?: string | null
+}
+
+export interface RegularExpense {
+  category: string
+  amount: number
+  frequency?: PayFrequency
+  essential?: boolean
+}
+
+export interface BudgetLimit {
+  category: string
+  limit: number
+  current_spending?: number
+}
+
+export interface BonusDetails {
+  amount: number
+  frequency?: string
+  last_received?: string | null
+}
+
+export interface InvestmentPreferences {
+  risk_tolerance?: RiskTolerance
+  interested_in?: string[]
+  experience_level?: ExperienceLevel
+}
+
+export interface LastJobDetails {
+  industry?: string
+  position?: string
+  duration?: string
+}
+
+export interface DebtInfo {
+  amount?: number
+  monthly_payment?: number
+  type?: string
+}
+
+export interface SavingsDetails {
+  amount?: number
+  emergency_fund?: number
+  months_covered?: number
+}
+
+export interface JobSearchDetails {
+  active?: boolean
+  applications_per_week?: number
+  job_search_budget?: number
+  industries_targeted?: string[]
+  skills_development?: string[]
+}
+
+export interface SupportResources {
+  wants_budget_help?: boolean
+  wants_job_resources?: boolean
+  wants_debt_advice?: boolean
+}
+
+export interface PensionInfo {
+  receives: boolean
+  amount?: number
+  frequency?: PayFrequency
+}
+
+export interface HousingInfo {
+  mortgage_or_rent?: number
+  insurance?: number
+  maintenance?: number
+}
+
+export interface HealthcareInfo {
+  monthly_premium?: number
+  out_of_pocket?: number
+}
+
+export interface OtherExpense {
+  name: string
+  amount: number
+  frequency?: PayFrequency
+}
+
+export interface RetirementAccountWithdrawal {
+  type: string
+  monthly_amount: number
+}
+
+export interface RetirementAccount {
+  type: string
+  current_value: number
+}
+
+export interface OtherAsset {
+  type: string
+  estimated_value: number
+}
+
+export interface SavingsGoal {
+  name: string
+  target_amount: number
+  current_amount?: number
+  category?: string
+}
+
+export interface Beneficiary {
+  name: string
+  relationship?: string
+  percentage: number
+}
+
+export interface LegacyPlanning {
+  beneficiaries?: Beneficiary[]
+}
+
+// ── Auth ──────────────────────────────────────────────────────────────────
 
 export interface SignupPayload {
   full_name?: string
@@ -58,64 +236,80 @@ export interface AuthResponse {
   user_type?: string
 }
 
+// ── Onboarding requests ──────────────────────────────────────────────────
+
 export interface StudentForm {
   user_id: string
-  education_level: "school" | "college" | "university" | "other"
+  education_level: EducationLevel
   institution_name?: string
-  living_situation: "hostel" | "family" | "rental" | "pg" | "other"
-  monthly_allowance: number
-  is_parent_funded: "yes" | "no" | "partially"
-  custom_categories?: { name: string; budget_limit: number; actual_spent?: number }[]
-  financial_goals?: { name: string; target_amount: number; current_amount?: number; priority?: "high" | "medium" | "low" }[]
-  summary_frequency: "daily" | "weekly" | "monthly"
+  living_situation: StudentLivingSituation
+  monthly_allowance?: number
+  is_parent_funded: ParentFunded
+  custom_categories?: CustomCategory[]
+  financial_goals?: FinancialGoal[]
+  summary_frequency?: SummaryFrequency
 }
 
 export interface EmployedForm {
   user_id: string
-  job_title: string
-  employment_type: "full-time" | "part-time" | "contract" | "freelance" | "self-employed"
+  job_title?: string
+  employment_type?: EmploymentType
   company?: string
   work_industry?: string
   work_location?: string
-  monthly_salary: number
-  pay_frequency: "weekly" | "biweekly" | "monthly"
+  monthly_salary?: number
+  pay_frequency?: PayFrequency
+  additional_income_sources?: IncomeSource[]
   has_bonuses?: boolean
-  fixed_expenses?: { category: string; amount: number }[]
-  summary_frequency: "daily" | "weekly" | "monthly"
+  bonus_details?: BonusDetails | null
+  fixed_expenses?: FixedExpense[]
+  budget_limits?: BudgetLimit[]
+  financial_goals?: FinancialGoal[]
+  summary_frequency?: SummaryFrequency
+  investment_preferences?: InvestmentPreferences | null
 }
 
 export interface UnemployedForm {
   user_id: string
-  employment_status:
-    | "actively-seeking"
-    | "taking-break"
-    | "studying"
-    | "caring"
-    | "disabled"
-  current_income: number
-  comfort_budget: number
-  runway_estimate: number
-  living_situation: "alone" | "with-family" | "with-roommates"
-  has_dependents: boolean
+  employment_status?: EmploymentStatus
+  last_job_details?: LastJobDetails | null
+  current_income?: number
+  income_sources?: IncomeSource[]
+  debt?: DebtInfo | null
+  comfort_budget?: number
+  runway_estimate?: number
+  living_situation?: UnemployedLivingSituation
+  has_dependents?: boolean
   dependents_count?: number
-  gig_interest: "not-at-all" | "somewhat" | "very-open"
-  willing_to_relocate: boolean
-  goal_priority:
-    | "build-emergency-fund"
-    | "reduce-debt"
-    | "cover-rent"
-    | "invest-small"
-    | "learn-skill"
+  gig_interest?: GigInterest
+  has_tools?: boolean
+  willing_to_relocate?: boolean
+  goal_priority?: GoalPriority
+  savings_details?: SavingsDetails | null
+  regular_expenses?: RegularExpense[]
+  budget_limits?: BudgetLimit[]
+  financial_goals?: FinancialGoal[]
+  job_search_details?: JobSearchDetails | null
+  summary_frequency?: SummaryFrequency
+  support_resources?: SupportResources | null
 }
 
 export interface RetiredForm {
   user_id: string
-  pension: { receives: boolean; amount?: number; frequency?: "monthly" | "yearly" }
-  housing?: { mortgage_or_rent?: number; insurance?: number; maintenance?: number }
-  healthcare?: { monthly_premium?: number; out_of_pocket?: number }
+  pension?: PensionInfo | null
+  other_income_sources?: IncomeSource[]
+  retirement_account_withdrawals?: RetirementAccountWithdrawal[]
+  housing?: HousingInfo | null
+  healthcare?: HealthcareInfo | null
+  other_expenses?: OtherExpense[]
+  retirement_accounts?: RetirementAccount[]
+  other_assets?: OtherAsset[]
+  savings_goals?: SavingsGoal[]
+  legacy_planning?: LegacyPlanning | null
 }
 
-// Dashboard responses share a common envelope; the profile field varies by type.
+// ── Dashboard ────────────────────────────────────────────────────────────
+
 export interface DashboardResponse {
   needs_onboarding: boolean
   user?: { email: string; full_name?: string; currency?: string }
@@ -126,7 +320,7 @@ export interface DashboardResponse {
   retired?: unknown
 }
 
-// ── Endpoints ─────────────────────────────────────────────────────────────
+// ── Endpoints ────────────────────────────────────────────────────────────
 
 export const api = {
   signup: (data: SignupPayload) =>
@@ -173,9 +367,6 @@ export const api = {
 }
 
 // ── Local session helpers ─────────────────────────────────────────────────
-// The backend auths via HTTP-only cookie, but onboarding endpoints need
-// user_id in the body. We persist user_id + user_type from auth responses
-// so the onboarding page can use them across reloads.
 
 const SESSION_KEY = "rukiai.session"
 
