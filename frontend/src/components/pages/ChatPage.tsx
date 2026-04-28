@@ -1,9 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import { useMutation, useQuery } from "@tanstack/react-query"
-import { Send, Loader2, Sparkles, Plus } from "lucide-react"
+import { Link } from "@tanstack/react-router"
+import { Send, Loader2, Sparkles, Plus, KeyRound, Server, ArrowRight } from "lucide-react"
 import { api, session, type ChatTurn, type UserType } from "@/lib/api"
 
 const VALID_TYPES: UserType[] = ["student", "employed", "unemployed", "retired"]
+
+const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "0.0.0.0"])
+const isHostedDeployment = () =>
+  typeof window !== "undefined" && !LOCAL_HOSTS.has(window.location.hostname)
 
 export default function ChatPage() {
   const sess = useMemo(() => session.read(), [])
@@ -15,6 +20,20 @@ export default function ChatPage() {
     enabled: !!userType && VALID_TYPES.includes(userType),
     retry: false,
   })
+
+  const aiSettingsQuery = useQuery({
+    queryKey: ["ai-settings"],
+    queryFn: () => api.getAiSettings(),
+    retry: false,
+  })
+
+  const hosted = isHostedDeployment()
+  const provider = aiSettingsQuery.data?.provider
+  const hasApiKey = aiSettingsQuery.data?.has_api_key ?? false
+  // On a hosted deployment, the local Ollama runtime isn't available — gate
+  // chat behind a cloud provider that has an API key configured.
+  const needsCloudSetup =
+    hosted && aiSettingsQuery.isSuccess && (provider === "local" || !hasApiKey)
 
   const initialAdvice = dashQuery.data?.ai_advice
   const [messages, setMessages] = useState<ChatTurn[]>([])
@@ -104,6 +123,20 @@ export default function ChatPage() {
     </p>
   )
 
+  // Wait for the AI settings query before deciding what to render — avoids
+  // flashing the empty state and then swapping it for the gate.
+  if (aiSettingsQuery.isLoading) {
+    return (
+      <div className="flex flex-col h-[calc(100vh-3.5rem)] md:h-screen items-center justify-center">
+        <Loader2 className="text-white/40 animate-spin" size={24} />
+      </div>
+    )
+  }
+
+  if (needsCloudSetup) {
+    return <CloudSetupGate provider={provider} hasApiKey={hasApiKey} />
+  }
+
   const isEmpty = messages.length === 0 && !dashQuery.isLoading
 
   // Empty state — centered greeting + composer (Gemini/Claude style).
@@ -146,6 +179,74 @@ export default function ChatPage() {
           {composer}
           {disclaimer}
         </div>
+      </div>
+    </div>
+  )
+}
+
+function CloudSetupGate({
+  provider,
+  hasApiKey,
+}: {
+  provider: string | undefined
+  hasApiKey: boolean
+}) {
+  const reason =
+    provider === "local"
+      ? "You're set to the Local (Ollama) model, which only runs on a machine with Ollama installed. This site is hosted on a public server, so the local runtime isn't available here."
+      : !hasApiKey
+        ? "Your selected provider needs an API key before it can answer chat messages."
+        : "Pick a cloud provider and add an API key to start chatting."
+
+  return (
+    <div className="flex flex-col h-[calc(100vh-3.5rem)] md:h-screen items-center justify-center px-4 sm:px-6">
+      <div className="w-full max-w-lg">
+        <div className="bg-[#1A1A1A] rounded-2xl border border-white/10 p-6 sm:p-8">
+          <div className="w-12 h-12 rounded-2xl bg-[#FFD700]/10 flex items-center justify-center mb-5">
+            <KeyRound className="text-[#FFD700]" size={22} />
+          </div>
+          <h1 className="text-xl font-semibold mb-2">Add an API key to start chatting</h1>
+          <p className="text-sm text-white/60 leading-relaxed mb-6">{reason}</p>
+
+          <div className="space-y-3 mb-6">
+            <Option
+              icon={<KeyRound size={16} />}
+              title="Use a cloud provider"
+              body="Pick OpenAI, Gemini, Anthropic, or Cohere in Settings and paste your own API key. Your key is stored on your account and only used for your requests."
+            />
+            <Option
+              icon={<Server size={16} />}
+              title="Or run RukiAI yourself"
+              body="Self-host the app on your own machine or server and use the free local Ollama model — no key, fully private."
+            />
+          </div>
+
+          <Link
+            to="/dashboard/settings"
+            className="w-full inline-flex items-center justify-center gap-2 py-3 bg-[#FFD700] text-black font-semibold rounded-xl hover:bg-[#e6c200] transition-all"
+          >
+            Open Settings
+            <ArrowRight size={16} />
+          </Link>
+
+          <p className="text-[11px] text-white/30 text-center mt-4">
+            Once your key is saved, come back here — your dashboard summary will be the first message.
+          </p>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function Option({ icon, title, body }: { icon: React.ReactNode; title: string; body: string }) {
+  return (
+    <div className="flex gap-3 p-3 rounded-xl border border-white/5 bg-[#0F0F0F]">
+      <div className="w-8 h-8 rounded-lg bg-[#FFD700]/10 text-[#FFD700] flex items-center justify-center shrink-0">
+        {icon}
+      </div>
+      <div>
+        <p className="text-sm font-medium text-white/90">{title}</p>
+        <p className="text-xs text-white/50 mt-0.5 leading-relaxed">{body}</p>
       </div>
     </div>
   )
