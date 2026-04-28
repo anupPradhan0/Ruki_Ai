@@ -109,7 +109,7 @@ export default function ChatPage() {
   // Empty state — centered greeting + composer (Gemini/Claude style).
   if (isEmpty) {
     return (
-      <div className="flex flex-col h-screen items-center justify-center px-6">
+      <div className="flex flex-col h-[calc(100vh-3.5rem)] md:h-screen items-center justify-center px-4 sm:px-6">
         <div className="w-full max-w-2xl">
           <EmptyState />
           {composer}
@@ -121,9 +121,9 @@ export default function ChatPage() {
 
   // Active conversation — composer pinned to the bottom.
   return (
-    <div className="flex flex-col h-screen">
+    <div className="flex flex-col h-[calc(100vh-3.5rem)] md:h-screen">
       <div ref={scrollRef} className="flex-1 overflow-y-auto">
-        <div className="max-w-3xl mx-auto px-6 py-8 space-y-6">
+        <div className="max-w-3xl mx-auto px-4 sm:px-6 py-6 sm:py-8 space-y-6">
           {messages.map((m, i) => (
             <Message key={i} role={m.role} content={m.content} />
           ))}
@@ -142,7 +142,7 @@ export default function ChatPage() {
       </div>
 
       <div className="bg-[#0A0A0A]">
-        <div className="max-w-3xl mx-auto px-6 py-4">
+        <div className="max-w-3xl mx-auto px-4 sm:px-6 py-3 sm:py-4">
           {composer}
           {disclaimer}
         </div>

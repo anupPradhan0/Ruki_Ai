@@ -249,7 +249,7 @@ export default function QuizPage() {
           </p>
         </div>
 
-        <div className="bg-[#1A1A1A] rounded-2xl border border-white/5 p-8">
+        <div className="bg-[#1A1A1A] rounded-2xl border border-white/5 p-6 sm:p-8">
           {/* Progress */}
           <div className="mb-6">
             <div className="flex justify-between text-xs text-white/40 mb-2">

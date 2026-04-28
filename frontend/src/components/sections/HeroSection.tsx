@@ -55,10 +55,10 @@ export default function HeroSection() {
         {/* Stats row */}
         <div className="mt-16 grid grid-cols-2 sm:grid-cols-4 gap-6">
           {[
-            { value: "50K+", label: "Active Users" },
-            { value: "₹2Cr+", label: "Savings Tracked" },
-            { value: "98%", label: "Accuracy Rate" },
-            { value: "4.9★", label: "User Rating" },
+            { value: "100%", label: "Private by Default" },
+            { value: "5", label: "AI Providers" },
+            { value: "4", label: "User Types Supported" },
+            { value: "Free", label: "& Open Source" },
           ].map((stat) => (
             <div key={stat.label} className="bg-[#1A1A1A] rounded-2xl p-5 text-center border border-white/5">
               <div className="text-2xl font-bold text-[#FFD700] mb-1">{stat.value}</div>

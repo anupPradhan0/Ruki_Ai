@@ -21,8 +21,8 @@ export default function AboutPage() {
         <div className="max-w-4xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-8 text-center">
           {[
             { label: "Founded", value: "2025" },
-            { label: "Users Helped", value: "50,000+" },
-            { label: "Money Saved", value: "₹2Cr+" },
+            { label: "Built By", value: "1 Dev" },
+            { label: "AI Providers", value: "5" },
           ].map(({ label, value }) => (
             <div key={label} className="bg-[#1A1A1A] rounded-2xl p-8 border border-white/5">
               <div className="text-3xl font-bold text-[#FFD700] mb-2">{value}</div>

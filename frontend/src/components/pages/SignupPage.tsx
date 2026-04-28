@@ -57,7 +57,7 @@ export default function SignupPage() {
           <p className="text-white/50 text-sm">Free forever. No credit card required.</p>
         </div>
 
-        <div className="bg-[#1A1A1A] rounded-2xl border border-white/5 p-8">
+        <div className="bg-[#1A1A1A] rounded-2xl border border-white/5 p-6 sm:p-8">
           <form className="space-y-5" onSubmit={handleSubmit}>
             {signup.isError && (
               <div className="flex items-start gap-2 bg-red-500/10 border border-red-500/30 rounded-xl px-4 py-3 text-red-400 text-sm">

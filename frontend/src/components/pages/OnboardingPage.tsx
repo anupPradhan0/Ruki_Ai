@@ -417,7 +417,7 @@ export default function OnboardingPage() {
             <p className="text-white/50 text-sm">Pick the one that fits you best.</p>
           </div>
 
-          <div className="bg-[#1A1A1A] rounded-2xl border border-white/5 p-8">
+          <div className="bg-[#1A1A1A] rounded-2xl border border-white/5 p-6 sm:p-8">
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               {VALID_TYPES.map((value) => {
                 const t = typeMeta[value]
@@ -463,7 +463,7 @@ export default function OnboardingPage() {
           </p>
         </div>
 
-        <div className="bg-[#1A1A1A] rounded-2xl border border-white/5 p-8 space-y-6">
+        <div className="bg-[#1A1A1A] rounded-2xl border border-white/5 p-6 sm:p-8 space-y-6">
           {userType === "student" && <StudentFormView userId={sess.user_id} />}
           {userType === "employed" && <EmployedFormView userId={sess.user_id} />}
           {userType === "unemployed" && <UnemployedFormView userId={sess.user_id} />}
