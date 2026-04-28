@@ -148,6 +148,16 @@ function AiTab() {
     },
   })
 
+  // If the saved/loaded model isn't valid for the currently selected provider
+  // (e.g. provider list arrived after settings, or someone changed it server-side),
+  // snap to the first available model so the <select> never displays a stale value.
+  useEffect(() => {
+    if (!currentProvider || !model) return
+    if (!currentProvider.models.includes(model)) {
+      setModel(currentProvider.models[0] ?? "")
+    }
+  }, [currentProvider, model])
+
   if (providersQuery.isLoading || settingsQuery.isLoading) return <Spinner />
   if (providersQuery.isError) return <ErrorBox msg={(providersQuery.error as Error).message} />
   if (settingsQuery.isError) return <ErrorBox msg={(settingsQuery.error as Error).message} />
@@ -167,16 +177,6 @@ function AiTab() {
     }
     applyProvider(newId)
   }
-
-  // If the saved/loaded model isn't valid for the currently selected provider
-  // (e.g. provider list arrived after settings, or someone changed it server-side),
-  // snap to the first available model so the <select> never displays a stale value.
-  useEffect(() => {
-    if (!currentProvider || !model) return
-    if (!currentProvider.models.includes(model)) {
-      setModel(currentProvider.models[0] ?? "")
-    }
-  }, [currentProvider, model])
 
   const needsKeyButMissing =
     !!currentProvider?.needs_api_key && !apiKey && !settingsQuery.data?.has_api_key
