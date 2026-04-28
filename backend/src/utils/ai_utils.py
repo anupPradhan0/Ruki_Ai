@@ -227,13 +227,22 @@ async def _ollama_chat(model: str, messages: list, temperature: float, max_token
 
 
 async def _openai_chat(model: str, api_key: str, messages: list, temperature: float, max_tokens: int) -> str:
-    payload = {
+    # Reasoning models (gpt-5, o1, o3) share max_tokens with internal reasoning tokens
+    # and reject the legacy `max_tokens` / `temperature` params. Use max_completion_tokens
+    # everywhere (it's canonical for chat completions) and only send temperature for
+    # non-reasoning models. Setting reasoning_effort=low keeps more of the budget for
+    # the visible response, since structured advice output doesn't need deep deliberation.
+    is_reasoning = model.startswith("gpt-5") or model.startswith("o1") or model.startswith("o3")
+    payload: dict = {
         "model": model,
         "messages": messages,
-        "temperature": temperature,
-        "max_tokens": max_tokens,
+        "max_completion_tokens": max_tokens,
     }
-    async with httpx.AsyncClient(timeout=60.0) as client:
+    if is_reasoning:
+        payload["reasoning_effort"] = "low"
+    else:
+        payload["temperature"] = temperature
+    async with httpx.AsyncClient(timeout=120.0) as client:
         r = await client.post(
             "https://api.openai.com/v1/chat/completions",
             json=payload,
@@ -377,7 +386,7 @@ async def get_ai_advice(
     prompt = _build_advice_prompt(user_type, data, context=context, history_context=history_context)
     messages = [{"role": "user", "content": prompt}]
     try:
-        text = await _dispatch(settings, messages, temperature=0.9, max_tokens=400)
+        text = await _dispatch(settings, messages, temperature=0.9, max_tokens=1500)
         return text or None
     except Exception as exc:
         print(f"AI advice error ({settings.get('provider')}): {exc}")
@@ -434,7 +443,7 @@ async def get_ai_chat_response(
     messages.append({"role": "user", "content": message})
 
     try:
-        text = await _dispatch(settings, messages, temperature=0.7, max_tokens=500)
+        text = await _dispatch(settings, messages, temperature=0.7, max_tokens=1000)
         reply = text or "Sorry, I couldn't generate a reply."
     except Exception as exc:
         print(f"AI chat error ({settings.get('provider')}): {exc}")
