@@ -1,5 +1,6 @@
 import { useMemo } from "react"
-import { useQuery } from "@tanstack/react-query"
+import { Link } from "@tanstack/react-router"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
 import {
   Sparkles,
   GraduationCap,
@@ -13,6 +14,9 @@ import {
   Heart,
   Home,
   Users,
+  RefreshCw,
+  Loader2,
+  KeyRound,
 } from "lucide-react"
 import {
   api,
@@ -57,9 +61,12 @@ function DashboardView({ data, userType }: { data: DashboardResponse; userType: 
     data.unemployed?.quiz_responses ??
     data.retired?.quiz_responses
 
+  const advice = data.ai_advice
+  const validAdvice = advice && !advice.startsWith("Unable to generate") ? advice : null
+
   return (
     <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 sm:py-10 space-y-6">
-      {data.ai_advice && !data.ai_advice.startsWith("Unable to generate") && <AIAdviceCard text={data.ai_advice} />}
+      {validAdvice ? <AIAdviceCard text={validAdvice} /> : <AIAdviceEmptyCard userType={userType} />}
 
       {userType === "student" && data.student && <StudentSections p={data.student} c={currency} />}
       {userType === "employed" && data.employed && <EmployedSections p={data.employed} c={currency} />}
@@ -68,6 +75,41 @@ function DashboardView({ data, userType }: { data: DashboardResponse; userType: 
 
       {quizAnswers && quizAnswers.length > 0 && <QuizCard answers={quizAnswers} />}
     </div>
+  )
+}
+
+function AIAdviceEmptyCard({ userType }: { userType: UserType }) {
+  const qc = useQueryClient()
+  const refresh = () => qc.invalidateQueries({ queryKey: ["dashboard", userType] })
+  const isFetching = !!qc.isFetching({ queryKey: ["dashboard", userType] })
+
+  return (
+    <Card title="AI Advice" icon={Sparkles}>
+      <div className="text-sm text-white/70 leading-relaxed">
+        <p className="mb-4">
+          Your personalized advice will appear here. Generation didn't return anything yet — usually
+          this means the AI provider isn't configured or the request just failed.
+        </p>
+        <div className="flex flex-col sm:flex-row gap-2">
+          <button
+            type="button"
+            onClick={refresh}
+            disabled={isFetching}
+            className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-[#FFD700] text-black text-sm font-semibold hover:bg-[#e6c200] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            {isFetching ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+            {isFetching ? "Generating..." : "Generate now"}
+          </button>
+          <Link
+            to="/dashboard/settings"
+            className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl border border-white/10 text-sm text-white/80 hover:border-white/20 hover:text-white transition-colors"
+          >
+            <KeyRound size={14} />
+            Check AI settings
+          </Link>
+        </div>
+      </div>
+    </Card>
   )
 }
 
