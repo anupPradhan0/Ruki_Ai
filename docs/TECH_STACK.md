@@ -176,6 +176,15 @@ Inspired by clean architecture / DDD — every file has one reason to change.
 - Both call the same `embed_text()` and `cosine_similarity()` helpers
 - Both inject their results into the same prompt builders (`_build_advice_prompt`, `_build_chat_system`)
 
+### **RAG retrieval is tuned for small models, not raw recall**
+- **Single embed per request** — query is embedded once and the vector reused for both knowledge and user-data retrieval (saves an Ollama hop per chat turn)
+- **Min-similarity threshold** drops weakly-matching chunks before they reach the LLM. A small model like Gemma 4 E2B is more hurt by irrelevant context than helped — bad context is worse than no context.
+- **MMR (Maximal Marginal Relevance)** picks chunks that are both relevant AND distinct from each other. Plain top-k tends to surface 3 near-identical chunks; MMR surfaces complementary ones.
+- **History scan cap** (`RAG_HISTORY_SCAN_LIMIT`) bounds CPU/memory as `chat_messages` grows from dozens to thousands.
+- **Per-chunk truncation** keeps prompts tight — important because the local 2B model is sensitive to prompt length on CPU.
+- **Skip RAG for trivial messages** — "ok", "thanks", short reactions don't trigger retrieval, saving the round-trip.
+- All thresholds are env-tunable via `RAG_*` settings, not hardcoded.
+
 ### **AI advice 7-day cache (with quiz invalidation)**
 - Local Gemma takes 5–30 seconds per call on CPU
 - A user's spending pattern doesn't change daily

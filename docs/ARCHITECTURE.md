@@ -308,7 +308,7 @@ Everything else is plumbing: prompt builders, RAG retrieval, persistence.
 
 Each user picks one in `/dashboard/settings`. The choice is stored on their
 `User` document (`ai_provider`, `ai_model`, `ai_api_key`). Every AI call reads
-those fields via `_ai_settings_from_user()` and dispatches accordingly. No SDKs
+those fields via `ai_settings_from_user()` and dispatches accordingly. No SDKs
 — each provider is a thin httpx call.
 
 **Privacy invariant**: embeddings are *always* local Ollama, even when the
@@ -327,9 +327,31 @@ The prompt builders inject **two** retrieved blocks before the LLM sees the ques
    is persisted with an embedding. Strictly filtered by `user_id`. Excludes
    the last 60 seconds so the in-flight conversation doesn't retrieve itself.
 
+**Retrieval pipeline (both pipelines):**
+
+```
+[1] Embed query ONCE per request and reuse for both retrievals (saves an
+    Ollama call per chat turn).
+[2] Skip RAG entirely if the message is shorter than RAG_MIN_QUERY_CHARS
+    (default 12 chars — short messages like "ok"/"thanks" don't need context).
+[3] Load candidates: filtered by user_type (knowledge) or user_id +
+    most-recent RAG_HISTORY_SCAN_LIMIT (history, default 500 messages).
+[4] Score with cosine similarity; drop anything below RAG_MIN_SIMILARITY
+    (default 0.30) so irrelevant context never reaches the LLM.
+[5] MMR selection — picks the top item then iteratively picks the next
+    chunk that maximizes:
+        λ · sim(query, chunk) − (1 − λ) · max_sim(chunk, already_picked)
+    where λ = RAG_MMR_LAMBDA (default 0.7). This prevents "3 nearly identical
+    chunks" failure mode and surfaces complementary information instead.
+[6] Truncate each rendered chunk at RAG_MAX_CHUNK_CHARS (default 500) before
+    injecting — keeps prompts tight, especially important on the local 2B model.
+```
+
 Both use cosine similarity in Python over all matching chunks. Brute-force is
 fine up to ~10k items; swap to MongoDB Atlas Vector Search or Qdrant when
 you outgrow that.
+
+**All thresholds are env-tunable** — see `RAG_*` settings in `config/settings.py`.
 
 ### Self-Assessment as a first-class signal
 
@@ -463,7 +485,9 @@ Frontend can rely on consistent error shapes: every error response is
 | Change AI chat system prompt / persona | `utils/ai_utils.py → _build_chat_system()` |
 | Add a new AI provider | `utils/ai_utils.py` → add to `PROVIDERS` + write `_<provider>_chat()` + add a branch in `_dispatch()` |
 | Add available models for an existing provider | `utils/ai_utils.py → PROVIDERS[<id>]["models"]` |
-| Tune RAG retrieval | `utils/rag_utils.py` (top-k, filter logic) + `config/settings.py → RAG_TOP_K` |
+| Tune RAG retrieval | `config/settings.py → RAG_TOP_K, RAG_MIN_SIMILARITY, RAG_MMR_LAMBDA, RAG_MAX_CHUNK_CHARS, RAG_HISTORY_SCAN_LIMIT, RAG_MIN_QUERY_CHARS` (all overridable via `.env`) |
+| Add a new AI provider's transport | `utils/ai_utils.py → _<provider>_chat()` + branch in `_dispatch()` |
+| Lock down CORS / cookies for prod | `config/settings.py → APP_ENV=production` and `ALLOWED_ORIGINS=` (comma-separated) drive both. Cookies auto-flip to `secure=True, samesite=lax` when `app_env=production`. |
 | Add finance knowledge | `scripts/seed_knowledge.py → SEED` then re-run the script |
 | Swap embedding model | `config/settings.py → OLLAMA_EMBED_MODEL` (then re-seed) |
 | Add quiz questions for a user type | `frontend/src/components/pages/QuizPage.tsx → QUESTIONS` |

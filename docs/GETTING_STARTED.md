@@ -152,6 +152,14 @@ ollama_model=gemma4:e2b
 ollama_embed_model=nomic-embed-text
 ```
 
+For production, also set:
+```env
+app_env=production
+allowed_origins=https://rukiai.online,https://www.rukiai.online
+```
+This flips cookies to `secure=True, samesite=lax` and locks CORS to your
+explicit allowlist.
+
 ### Step 4 — Run backend
 
 ```bash
@@ -309,9 +317,35 @@ Check `backend/.env` has:
 
 ### Frontend can't reach the backend (CORS)
 
-The backend allows any `localhost` / `127.0.0.1` origin on any port via regex.
-If you've put the frontend on a different host, edit `main.py` →
-`allow_origin_regex` to add it.
+CORS is **env-driven**. Set `allowed_origins` in `backend/.env` to a
+comma-separated list of allowed origins:
+
+```env
+allowed_origins=https://rukiai.online,https://www.rukiai.online
+```
+
+Leave it empty to fall back to the dev-friendly localhost regex (any
+`http://localhost:*` or `http://127.0.0.1:*` origin allowed). The browser
+`Origin` header must match an entry **exactly** (scheme + host + port).
+
+---
+
+## Tuning RAG behavior
+
+All RAG thresholds live in `backend/.env` (defaults are sensible for most
+deployments — only change if you know why):
+
+| Variable | Default | What it does |
+|---|---|---|
+| `rag_top_k` | `3` | Max chunks returned per retrieval (knowledge + history each) |
+| `rag_min_similarity` | `0.30` | Cosine score below this is treated as "no useful match" — chunk dropped before injection |
+| `rag_mmr_lambda` | `0.7` | MMR tradeoff. `1.0` = pure relevance; `0.0` = pure diversity. Lower = more topically varied results |
+| `rag_max_chunk_chars` | `500` | Hard cap on each rendered chunk in the prompt — keeps token budget tight |
+| `rag_history_scan_limit` | `500` | Cap on per-user chat messages scanned per retrieval (recency-ordered) — bounds memory as history grows |
+| `rag_min_query_chars` | `12` | Skip RAG for messages shorter than this (e.g. "ok", "thanks") — saves an embedding round-trip |
+
+After changing any of these, restart `uvicorn`. They take effect on the
+next AI call (no rebuild / re-seed needed).
 
 ---
 
