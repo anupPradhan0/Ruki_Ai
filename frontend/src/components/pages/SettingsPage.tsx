@@ -1,11 +1,15 @@
 import { useEffect, useMemo, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { Loader2, Save, KeyRound, User as UserIcon, Sparkles, Check } from "lucide-react"
+import { Loader2, Save, KeyRound, User as UserIcon, Sparkles, Check, Server, AlertTriangle, X } from "lucide-react"
 import { api, session, type AiProvider, type UserType } from "@/lib/api"
 
 type Tab = "info" | "ai"
 
 const VALID_TYPES: UserType[] = ["student", "employed", "unemployed", "retired"]
+
+const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "0.0.0.0"])
+const isHostedDeployment = () =>
+  typeof window !== "undefined" && !LOCAL_HOSTS.has(window.location.hostname)
 
 export default function SettingsPage() {
   const [tab, setTab] = useState<Tab>("info")
@@ -114,6 +118,7 @@ function AiTab() {
   const [model, setModel] = useState<string>("")
   const [apiKey, setApiKey] = useState<string>("")
   const [savedFlash, setSavedFlash] = useState(false)
+  const [showLocalWarning, setShowLocalWarning] = useState(false)
 
   useEffect(() => {
     if (settingsQuery.data) {
@@ -147,12 +152,20 @@ function AiTab() {
   if (providersQuery.isError) return <ErrorBox msg={(providersQuery.error as Error).message} />
   if (settingsQuery.isError) return <ErrorBox msg={(settingsQuery.error as Error).message} />
 
-  const onProviderChange = (newId: string) => {
+  const applyProvider = (newId: string) => {
     setProvider(newId)
     const prov = providers.find((p) => p.id === newId)
     const firstModel = prov?.models?.[0] ?? ""
     setModel(firstModel)
     setApiKey("")
+  }
+
+  const onProviderChange = (newId: string) => {
+    if (newId === "local" && isHostedDeployment() && provider !== "local") {
+      setShowLocalWarning(true)
+      return
+    }
+    applyProvider(newId)
   }
 
   // If the saved/loaded model isn't valid for the currently selected provider
@@ -251,6 +264,79 @@ function AiTab() {
         {saveMutation.isError && (
           <span className="text-sm text-red-400">{(saveMutation.error as Error).message}</span>
         )}
+      </div>
+
+      {showLocalWarning && (
+        <LocalWarningModal
+          onCancel={() => setShowLocalWarning(false)}
+          onConfirm={() => {
+            setShowLocalWarning(false)
+            applyProvider("local")
+          }}
+        />
+      )}
+    </div>
+  )
+}
+
+function LocalWarningModal({
+  onCancel,
+  onConfirm,
+}: {
+  onCancel: () => void
+  onConfirm: () => void
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
+      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onCancel} aria-hidden />
+      <div className="relative w-full max-w-md bg-[#1A1A1A] border border-white/10 rounded-2xl p-6 sm:p-7 shadow-2xl">
+        <button
+          type="button"
+          onClick={onCancel}
+          className="absolute top-3 right-3 p-1.5 rounded-lg text-white/40 hover:text-white hover:bg-white/5 transition-colors"
+          aria-label="Close"
+        >
+          <X size={16} />
+        </button>
+
+        <div className="w-11 h-11 rounded-2xl bg-amber-500/10 flex items-center justify-center mb-4">
+          <AlertTriangle className="text-amber-400" size={20} />
+        </div>
+
+        <h2 className="text-lg font-semibold mb-2">Local model needs to run on your machine</h2>
+        <p className="text-sm text-white/60 leading-relaxed mb-4">
+          The <span className="text-white/90">Local (Ollama)</span> option runs the AI on the same
+          computer the backend is on. This site is hosted online — there's no Ollama running on the
+          server, so the local model won't actually answer here.
+        </p>
+
+        <div className="flex gap-3 p-3 rounded-xl border border-white/5 bg-[#0F0F0F] mb-5">
+          <div className="w-8 h-8 rounded-lg bg-[#FFD700]/10 text-[#FFD700] flex items-center justify-center shrink-0">
+            <Server size={15} />
+          </div>
+          <p className="text-xs text-white/60 leading-relaxed">
+            To use this option, run RukiAI on your own computer or server with Ollama installed.
+            Otherwise, pick a cloud provider (OpenAI, Gemini, Anthropic, Cohere) and add your own
+            API key.
+          </p>
+        </div>
+
+        <div className="flex flex-col-reverse sm:flex-row gap-2 sm:gap-3">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="flex-1 px-4 py-2.5 rounded-xl border border-white/10 text-sm text-white/80 hover:border-white/20 hover:text-white transition-colors"
+          >
+            Pick another provider
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            className="flex-1 px-4 py-2.5 rounded-xl bg-[#FFD700] text-black text-sm font-semibold hover:bg-[#e6c200] transition-colors"
+          >
+            I'll self-host it
+          </button>
+        </div>
       </div>
     </div>
   )
