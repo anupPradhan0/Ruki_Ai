@@ -1,3 +1,5 @@
+import { Analytics } from '@vercel/analytics/react';
+
 export default function App() {
-  return null
+  return <Analytics />
 }
