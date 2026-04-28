@@ -1,6 +1,6 @@
 import { useMemo } from "react"
 import { Link } from "@tanstack/react-router"
-import { useQuery, useQueryClient } from "@tanstack/react-query"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import {
   Sparkles,
   GraduationCap,
@@ -66,7 +66,11 @@ function DashboardView({ data, userType }: { data: DashboardResponse; userType: 
 
   return (
     <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 sm:py-10 space-y-6">
-      {validAdvice ? <AIAdviceCard text={validAdvice} /> : <AIAdviceEmptyCard userType={userType} />}
+      {validAdvice ? (
+        <AIAdviceCard text={validAdvice} userType={userType} />
+      ) : (
+        <AIAdviceEmptyCard userType={userType} />
+      )}
 
       {userType === "student" && data.student && <StudentSections p={data.student} c={currency} />}
       {userType === "employed" && data.employed && <EmployedSections p={data.employed} c={currency} />}
@@ -78,11 +82,51 @@ function DashboardView({ data, userType }: { data: DashboardResponse; userType: 
   )
 }
 
-function AIAdviceEmptyCard({ userType }: { userType: UserType }) {
+function useRegenerateAdvice(userType: UserType) {
   const qc = useQueryClient()
-  const refresh = () => qc.invalidateQueries({ queryKey: ["dashboard", userType] })
-  const isFetching = !!qc.isFetching({ queryKey: ["dashboard", userType] })
+  return useMutation({
+    mutationFn: () => api.regenerateAdvice(userType),
+    onSuccess: (fresh) => {
+      qc.setQueryData(["dashboard", userType], fresh)
+    },
+  })
+}
 
+function RegenerateButton({
+  userType,
+  variant = "primary",
+  label,
+}: {
+  userType: UserType
+  variant?: "primary" | "ghost"
+  label: string
+}) {
+  const m = useRegenerateAdvice(userType)
+  const base =
+    "inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+  const styles =
+    variant === "primary"
+      ? "bg-[#FFD700] text-black hover:bg-[#e6c200]"
+      : "border border-white/10 text-white/80 hover:border-white/20 hover:text-white font-medium"
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => m.mutate()}
+        disabled={m.isPending}
+        className={`${base} ${styles}`}
+      >
+        {m.isPending ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+        {m.isPending ? "Regenerating..." : label}
+      </button>
+      {m.isError && (
+        <p className="text-xs text-red-400 mt-2">{(m.error as Error).message}</p>
+      )}
+    </>
+  )
+}
+
+function AIAdviceEmptyCard({ userType }: { userType: UserType }) {
   return (
     <Card title="AI Advice" icon={Sparkles}>
       <div className="text-sm text-white/70 leading-relaxed">
@@ -91,15 +135,7 @@ function AIAdviceEmptyCard({ userType }: { userType: UserType }) {
           this means the AI provider isn't configured or the request just failed.
         </p>
         <div className="flex flex-col sm:flex-row gap-2">
-          <button
-            type="button"
-            onClick={refresh}
-            disabled={isFetching}
-            className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-[#FFD700] text-black text-sm font-semibold hover:bg-[#e6c200] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          >
-            {isFetching ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
-            {isFetching ? "Generating..." : "Generate now"}
-          </button>
+          <RegenerateButton userType={userType} label="Generate now" />
           <Link
             to="/dashboard/settings"
             className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl border border-white/10 text-sm text-white/80 hover:border-white/20 hover:text-white transition-colors"
@@ -169,7 +205,7 @@ function titleCase(s: string | undefined | null): string {
     .join(" ")
 }
 
-function AIAdviceCard({ text }: { text: string }) {
+function AIAdviceCard({ text, userType }: { text: string; userType: UserType }) {
   const lines = text.split("\n")
   return (
     <Card title="AI Advice" icon={Sparkles}>
@@ -194,6 +230,12 @@ function AIAdviceCard({ text }: { text: string }) {
           }
           return <p key={i}>{line}</p>
         })}
+      </div>
+      <div className="mt-5 pt-4 border-t border-white/5 flex items-center justify-between gap-3 flex-wrap">
+        <p className="text-[11px] text-white/40">
+          Generated from your profile, quiz answers, and recent conversations.
+        </p>
+        <RegenerateButton userType={userType} variant="ghost" label="Regenerate" />
       </div>
     </Card>
   )

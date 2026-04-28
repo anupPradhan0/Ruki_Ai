@@ -446,6 +446,11 @@ export const api = {
   getDashboard: (type: UserType) =>
     request<DashboardResponse>(`/dashboard/${type}`),
 
+  regenerateAdvice: (type: UserType) =>
+    request<DashboardResponse>(`/dashboard/${type}/regenerate-advice`, {
+      method: "POST",
+    }),
+
   submitQuiz: (type: UserType, answers: QuizAnswer[]) =>
     request<{ message: string; user_type: string }>(`/quiz/${type}`, {
       method: "POST",

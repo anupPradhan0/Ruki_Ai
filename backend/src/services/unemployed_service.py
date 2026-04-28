@@ -91,3 +91,14 @@ async def get_unemployed_dashboard(user_id: PydanticObjectId) -> UnemployedDashb
         ai_advice=unemployed.ai_advice,
         quiz_completed=bool(getattr(unemployed, "quiz_responses", None)),
     )
+
+
+async def regenerate_unemployed_advice(user_id: PydanticObjectId) -> UnemployedDashboardResponse:
+    """Force a fresh AI advice generation for an unemployed user."""
+    unemployed = await find_unemployed_by_user_id(user_id)
+    if not unemployed:
+        raise HTTPException(status_code=404, detail="Unemployed profile not found")
+    unemployed.ai_advice = None
+    unemployed.ai_advice_generated_at = None
+    await unemployed.save()
+    return await get_unemployed_dashboard(user_id)

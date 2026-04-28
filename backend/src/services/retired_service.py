@@ -76,3 +76,14 @@ async def get_retired_dashboard(user_id: PydanticObjectId) -> RetiredDashboardRe
         ai_advice=retired.ai_advice,
         quiz_completed=bool(getattr(retired, "quiz_responses", None)),
     )
+
+
+async def regenerate_retired_advice(user_id: PydanticObjectId) -> RetiredDashboardResponse:
+    """Force a fresh AI advice generation for a retired user."""
+    retired = await find_retired_by_user_id(user_id)
+    if not retired:
+        raise HTTPException(status_code=404, detail="Retired profile not found")
+    retired.ai_advice = None
+    retired.ai_advice_generated_at = None
+    await retired.save()
+    return await get_retired_dashboard(user_id)

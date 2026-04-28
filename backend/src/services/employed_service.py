@@ -83,3 +83,14 @@ async def get_employed_dashboard(user_id: PydanticObjectId) -> EmployedDashboard
         ai_advice=employed.ai_advice,
         quiz_completed=bool(getattr(employed, "quiz_responses", None)),
     )
+
+
+async def regenerate_employed_advice(user_id: PydanticObjectId) -> EmployedDashboardResponse:
+    """Force a fresh AI advice generation for an employed user."""
+    employed = await find_employed_by_user_id(user_id)
+    if not employed:
+        raise HTTPException(status_code=404, detail="Employed profile not found")
+    employed.ai_advice = None
+    employed.ai_advice_generated_at = None
+    await employed.save()
+    return await get_employed_dashboard(user_id)

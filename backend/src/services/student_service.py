@@ -93,3 +93,15 @@ async def get_student_dashboard(user_id: PydanticObjectId) -> StudentDashboardRe
         ai_advice=student.ai_advice,
         quiz_completed=bool(getattr(student, "quiz_responses", None)),
     )
+
+
+async def regenerate_student_advice(user_id: PydanticObjectId) -> StudentDashboardResponse:
+    """Force a fresh AI advice generation for a student. Clears any cached
+    advice (and its timestamp) so the next dashboard call regenerates."""
+    student = await find_student_by_user_id(user_id)
+    if not student:
+        raise HTTPException(status_code=404, detail="Student profile not found")
+    student.ai_advice = None
+    student.ai_advice_generated_at = None
+    await student.save()
+    return await get_student_dashboard(user_id)
