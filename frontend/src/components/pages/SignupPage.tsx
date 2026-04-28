@@ -1,7 +1,7 @@
 import { Link, useNavigate } from "@tanstack/react-router"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useMutation } from "@tanstack/react-query"
-import { Eye, EyeOff, Loader2, AlertCircle } from "lucide-react"
+import { Eye, EyeOff, Loader2, AlertCircle, Clock } from "lucide-react"
 import { api, session, type SignupPayload, type UserType } from "@/lib/api"
 
 const userTypes = [
@@ -49,6 +49,16 @@ export default function SignupPage() {
     })
   }
 
+  const [coldStart, setColdStart] = useState(false)
+  useEffect(() => {
+    if (!signup.isPending) {
+      setColdStart(false)
+      return
+    }
+    const t = setTimeout(() => setColdStart(true), 5000)
+    return () => clearTimeout(t)
+  }, [signup.isPending])
+
   return (
     <div className="flex items-center justify-center px-4 py-16">
       <div className="w-full max-w-md">
@@ -63,6 +73,18 @@ export default function SignupPage() {
               <div className="flex items-start gap-2 bg-red-500/10 border border-red-500/30 rounded-xl px-4 py-3 text-red-400 text-sm">
                 <AlertCircle size={16} className="mt-0.5 shrink-0" />
                 <span>{(signup.error as Error)?.message ?? "Something went wrong"}</span>
+              </div>
+            )}
+
+            {coldStart && signup.isPending && (
+              <div className="flex items-start gap-2 bg-[#FFD700]/10 border border-[#FFD700]/30 rounded-xl px-4 py-3 text-[#FFD700] text-sm">
+                <Clock size={16} className="mt-0.5 shrink-0" />
+                <div className="leading-relaxed">
+                  <p className="font-medium">Waking up the server...</p>
+                  <p className="text-[#FFD700]/80 text-xs mt-0.5">
+                    The backend is hosted on Render's free tier and sleeps when idle. First request takes ~30 seconds. Hang tight.
+                  </p>
+                </div>
               </div>
             )}
 
