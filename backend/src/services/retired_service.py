@@ -66,8 +66,9 @@ async def get_retired_dashboard(user_id: PydanticObjectId) -> RetiredDashboardRe
 
     if stale:
         advice = await get_ai_advice(retired, "retired", ai_settings_from_user(user), user_id=user_id)
-        await update_retired_ai_advice(retired.id, advice)
-        retired.ai_advice = advice
+        if advice:
+            await update_retired_ai_advice(retired.id, advice)
+            retired.ai_advice = advice
 
     return RetiredDashboardResponse(
         user=UserSummary.model_validate(user),

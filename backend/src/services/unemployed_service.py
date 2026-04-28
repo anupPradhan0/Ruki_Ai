@@ -81,8 +81,9 @@ async def get_unemployed_dashboard(user_id: PydanticObjectId) -> UnemployedDashb
 
     if stale:
         advice = await get_ai_advice(unemployed, "unemployed", ai_settings_from_user(user), user_id=user_id)
-        await update_unemployed_ai_advice(unemployed.id, advice)
-        unemployed.ai_advice = advice
+        if advice:
+            await update_unemployed_ai_advice(unemployed.id, advice)
+            unemployed.ai_advice = advice
 
     return UnemployedDashboardResponse(
         user=UserSummary.model_validate(user),

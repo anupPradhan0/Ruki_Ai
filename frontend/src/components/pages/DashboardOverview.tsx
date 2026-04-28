@@ -59,7 +59,7 @@ function DashboardView({ data, userType }: { data: DashboardResponse; userType: 
 
   return (
     <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 sm:py-10 space-y-6">
-      {data.ai_advice && <AIAdviceCard text={data.ai_advice} />}
+      {data.ai_advice && !data.ai_advice.startsWith("Unable to generate") && <AIAdviceCard text={data.ai_advice} />}
 
       {userType === "student" && data.student && <StudentSections p={data.student} c={currency} />}
       {userType === "employed" && data.employed && <EmployedSections p={data.employed} c={currency} />}

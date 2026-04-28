@@ -352,8 +352,13 @@ async def get_ai_advice(
     user_type: str,
     ai_settings: Optional[dict] = None,
     user_id: Optional[PydanticObjectId] = None,
-) -> str:
-    """One-shot financial advice. Pulls knowledge RAG + this user's past chat history."""
+) -> Optional[str]:
+    """One-shot financial advice. Pulls knowledge RAG + this user's past chat history.
+
+    Returns None if generation fails or returns empty text. Callers should treat
+    None as "no advice yet" — don't persist it as cached advice, since that would
+    mask future successful regenerations under the 7-day staleness window.
+    """
     settings = ai_settings or {"provider": "local", "model": "gemma4:e2b", "api_key": None}
     data = _extract_essential_fields(profile, user_type)
 
@@ -373,10 +378,10 @@ async def get_ai_advice(
     messages = [{"role": "user", "content": prompt}]
     try:
         text = await _dispatch(settings, messages, temperature=0.9, max_tokens=400)
-        return text or "Unable to generate financial advice at this time."
+        return text or None
     except Exception as exc:
         print(f"AI advice error ({settings.get('provider')}): {exc}")
-        return "Unable to generate financial advice at this time. Please try again later."
+        return None
 
 
 async def get_ai_chat_response(

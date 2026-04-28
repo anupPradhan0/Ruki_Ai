@@ -35,7 +35,11 @@ export default function ChatPage() {
   const needsCloudSetup =
     hosted && aiSettingsQuery.isSuccess && (provider === "local" || !hasApiKey)
 
-  const initialAdvice = dashQuery.data?.ai_advice
+  // Skip the backend's friendly fallback so we don't seed chat with an error
+  // string. This shows up for users whose advice was cached when their old
+  // provider was misconfigured (e.g. local Ollama on a hosted deployment).
+  const rawAdvice = dashQuery.data?.ai_advice
+  const initialAdvice = rawAdvice && !rawAdvice.startsWith("Unable to generate") ? rawAdvice : undefined
   const [messages, setMessages] = useState<ChatTurn[]>([])
   const [input, setInput] = useState("")
   const scrollRef = useRef<HTMLDivElement>(null)
