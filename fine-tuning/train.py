@@ -42,15 +42,18 @@ ADAPTER_DIR = OUT_DIR / "lora"
 MERGED_DIR = OUT_DIR / "merged-16bit"
 GGUF_DIR = OUT_DIR / "gguf"
 
-# Override at runtime: BASE_MODEL=<repo> python3 train.py
-# Defaults below are sized for a 4 GB laptop GPU. For Colab T4 (15 GB) or
-# bigger, switch to gemma-3n-E2B-it-bnb-4bit (matches the Ollama production
-# model most closely) or gemma-2-2b-it-bnb-4bit.
-BASE_MODEL = os.environ.get("BASE_MODEL", "unsloth/gemma-3-1b-it-bnb-4bit")
+# Defaults below are tuned for Colab T4 (15 GB).
+# For a 4 GB laptop GPU, override on the command line:
+#   BASE_MODEL=unsloth/gemma-3-1b-it-bnb-4bit MAX_SEQ_LEN=512 \
+#       BATCH=1 GRAD_ACCUM=8 python3 train.py
+BASE_MODEL = os.environ.get("BASE_MODEL", "unsloth/gemma-3-4b-it-bnb-4bit")
 
-MAX_SEQ_LEN = int(os.environ.get("MAX_SEQ_LEN", "1024"))
+MAX_SEQ_LEN = int(os.environ.get("MAX_SEQ_LEN", "2048"))
 LOAD_IN_4BIT = True
 DTYPE = None            # auto-detect bf16/fp16
+
+# Reduce CUDA fragmentation — harmless on big GPUs, helps on tight ones.
+os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 
 # LoRA hyperparams — sane defaults for a small model + small dataset
 LORA_R = 16
@@ -59,10 +62,10 @@ LORA_DROPOUT = 0.05
 LORA_TARGET = ["q_proj", "k_proj", "v_proj", "o_proj",
                "gate_proj", "up_proj", "down_proj"]
 
-# Training hyperparams — tuned for ~600 examples on a 4 GB GPU.
+# Training hyperparams — tuned for ~600 examples on Colab T4.
 EPOCHS = int(os.environ.get("EPOCHS", "3"))
-BATCH = int(os.environ.get("BATCH", "1"))
-GRAD_ACCUM = int(os.environ.get("GRAD_ACCUM", "8"))   # effective batch = 8
+BATCH = int(os.environ.get("BATCH", "2"))
+GRAD_ACCUM = int(os.environ.get("GRAD_ACCUM", "4"))   # effective batch = 8
 LR = 2e-4
 WARMUP_RATIO = 0.05
 WEIGHT_DECAY = 0.01
@@ -78,6 +81,10 @@ model, tokenizer = FastLanguageModel.from_pretrained(
     max_seq_length=MAX_SEQ_LEN,
     dtype=DTYPE,
     load_in_4bit=LOAD_IN_4BIT,
+    # Gemma 3's FlexAttention OOMs on tight GPUs; "eager" is heavier on time
+    # but lighter on memory. Override with ATTN_IMPL=flex_attention if you
+    # have plenty of VRAM and want speed.
+    attn_implementation=os.environ.get("ATTN_IMPL", "eager"),
 )
 
 print("attaching LoRA adapter")
