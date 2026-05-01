@@ -1,7 +1,7 @@
 # RukiAI — Smart Personal Finance Tracker
 
 > AI-powered personal finance tracker that helps students, employed people, freelancers, the unemployed, and retirees make smarter financial decisions. Privacy-first by default — runs locally on **Gemma 4 E2B** via Ollama, with optional cloud providers (Gemini · OpenAI · Anthropic · Cohere) selectable per user. Grounded in a finance knowledge base and the user's own past conversations through Retrieval-Augmented Generation (RAG).
-
+ 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 [![Python 3.11+](https://img.shields.io/badge/Python-3.11+-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
