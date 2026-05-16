@@ -249,17 +249,42 @@ chrome (Sidebar) and shouldn't inherit the marketing Navbar.
 ### 3. User asks a follow-up in chat
 
 ```
-[1] User opens /dashboard/chat
-    → ChatPage seeds messages with the existing ai_advice from the cached
-      dashboard query (no extra request)
-[2] User types a question, presses Enter
-[3] POST /chat/{type} with { user_id, message, history }
-    → service loads profile, builds preamble with profile + quiz answers
-    → calls Cohere chat API with history + new message
-    → returns { reply }
-[4] Frontend appends user message and assistant reply to the local list
-[5] Conversation lives in component state — no DB persistence
+[1] User opens /dashboard/chat (no conversation_id in the URL)
+    → DashboardLayout renders Sidebar + the ChatPage outlet
+    → Sidebar's <ConversationList> fetches GET /conversations and shows past chats
+    → ChatPage seeds the first assistant message with the cached ai_advice
+[2] User types "How about my credit card debt?", presses Enter
+[3] POST /chat/employed with { user_id, message, conversation_id: null, history: [] }
+    → chat_service: no conversation_id → creates a new Conversation
+      (title = first 60 chars of the message)
+    → persists the user turn to chat_messages with that conversation_id
+    → loads the last 20 messages for this conversation from DB (= just the
+      user turn) and feeds them as `history` to the LLM
+    → AI provider replies; the assistant turn is also persisted
+    → conversation.updated_at is bumped (sidebar will re-sort)
+    → returns { reply, conversation_id: "6a08..." }
+[4] Frontend:
+    → seeds the React Query cache for ["conversation", new_id] with the
+      messages it already has (no flicker on the upcoming navigation)
+    → invalidates ["conversations"] so the sidebar refetches
+    → navigates to /dashboard/chat/6a08...
+[5] The dynamic route (chat.$conversationId.tsx) mounts a new ChatPage
+    with that id. The query data is already in cache, so messages render
+    immediately. Future sends from this page pass the conversation_id and
+    append to the same chat.
 ```
+
+**Persistence guarantees**
+
+- The user's message is persisted **before** the LLM is called, so a slow
+  or failing AI provider never costs the user their input.
+- The backend is the source of truth for context: it always builds `history`
+  from `chat_messages.find(conversation_id=…)` ordered by `created_at`,
+  capped to the most recent 20 turns. The `history` field on the request is
+  accepted but ignored — older client builds that still send it keep working.
+- Ownership is enforced on every read/write: every `chat_messages` /
+  `conversations` query filters by `user_id` (from the JWT cookie), and
+  reading a conversation that isn't yours returns `404`, never the doc.
 
 ---
 
@@ -379,7 +404,10 @@ Used by `GET /dashboard/{type}`.
 
 ### Conversational chat (`get_ai_chat_response`)
 
-Used by `POST /chat/{type}`.
+Used by `POST /chat/{type}`. The flow below is what `ai_utils` does on a
+single turn; the surrounding `chat_service` handles conversation lookup,
+turn persistence, and `updated_at` bumps (see "Conversation persistence"
+below).
 
 ```
 [1] Extract essentials from profile (same as above)
@@ -387,12 +415,45 @@ Used by `POST /chat/{type}`.
 [3] retrieve_relevant_history(message, user_id)  → top-k past turns from THIS user
 [4] _build_chat_system() composes the system prompt:
     persona + profile + self-assessment + past convos + knowledge + style rules
-[5] Append frontend-supplied history + the new user message
+[5] Append DB-loaded history (last 20 turns of this conversation) + new user message
 [6] _dispatch(ai_settings, messages) → user's chosen provider
-[7] persist_chat_turn(user_id, "user", message) — embed + insert
-    persist_chat_turn(user_id, "assistant", reply) — embed + insert
+[7] Embedding pass + insert into chat_messages happens in chat_service, NOT here
 [8] Return reply
 ```
+
+### Conversation persistence
+
+`chat_service.chat_with_ai()` is the orchestrator that gives the app
+ChatGPT-style sidebar history. It owns the **`conversations`** collection
+(metadata: `user_id`, `title`, `user_type`, `created_at`, `updated_at`)
+and tags every **`chat_messages`** doc with the matching `conversation_id`.
+
+Per request:
+
+1. Resolve the conversation:
+   - if `conversation_id` is sent → fetch + ownership check (`404` on mismatch)
+   - else → `conversation_service.start_conversation()` creates a new doc with
+     a title derived from the first 60 chars of the message
+2. Persist the **user turn** to `chat_messages` (with `conversation_id`)
+   *before* calling the LLM — guarantees the user's input is never lost if
+   the provider 500s.
+3. Read the last 20 messages of this conversation from MongoDB. **This is
+   the source of truth** — the `history` field on the request is ignored.
+4. Call `get_ai_chat_response()` with those messages as context.
+5. Persist the **assistant turn** and bump `conversation.updated_at`
+   (so the sidebar re-sorts to put this chat on top).
+6. Return `{ reply, conversation_id }`.
+
+**Why ignore client-supplied history?** Three reasons:
+- It would let a hostile client forge a "you previously agreed to X" prefix.
+- It would diverge when the same conversation is open in two tabs.
+- The DB already has the full record — there's no reason to trust the wire.
+
+Cascade rules:
+- `DELETE /conversations/{id}` removes the conversation **and** all
+  `chat_messages` with that `conversation_id`. Older RAG-only messages
+  (created before this feature, `conversation_id = None`) are untouched.
+- Renames update `conversation.title` and bump `updated_at`.
 
 ### Caching strategy
 
@@ -421,7 +482,8 @@ Used by `POST /chat/{type}`.
 | `guest_users` | Guest-submitted data (TTL: 7 days) |
 | `feedbacks` | Public feedback messages |
 | `knowledge_chunks` | Curated finance facts + embeddings (knowledge RAG source) |
-| `chat_messages` | Per-user persisted chat turns + embeddings (user-data RAG source) |
+| `chat_messages` | Per-user persisted chat turns + embeddings (user-data RAG source) — tagged with `conversation_id` |
+| `conversations` | Sidebar-grouping doc per chat thread: `user_id`, `title`, `user_type`, timestamps |
 
 This keeps each schema focused, lets us add fields per type without bloating
 the user model, and makes profile-specific queries fast.
@@ -438,6 +500,8 @@ the user model, and makes profile-specific queries fast.
 | `guests` | TTL on `created_at` — auto-delete after 2 days |
 | `guest_users` | `user_id` (unique), `current_status`, TTL `created_at` (7 days) |
 | `feedbacks` | `created_at` (desc), `is_public` |
+| `chat_messages` | `user_id`, `created_at`, **compound `(conversation_id, created_at)`** for fast per-conversation history reads |
+| `conversations` | Compound `(user_id, updated_at desc)` — what the sidebar query reads in one index hit |
 
 ### Pydantic + Beanie validators
 
