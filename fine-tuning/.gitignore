@@ -1,0 +1,24 @@
+# Per-machine compiled cache built by Unsloth at runtime — torch/CUDA-specific.
+unsloth_compiled_cache/
+
+# Training outputs (adapter weights, merged model, GGUFs — can be GBs).
+output/
+
+# Regeneratable from prepare_dataset.py
+train.jsonl
+val.jsonl
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Hugging Face / dataset caches
+.cache/
+*.arrow
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/

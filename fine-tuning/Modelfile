@@ -1,0 +1,43 @@
+# Ollama Modelfile for the fine-tuned RukiAI Gemma model.
+#
+# After train.py finishes, the Q4_K_M GGUF will be at:
+#   output/gguf/unsloth.Q4_K_M.gguf  (filename depends on Unsloth's version)
+#
+# Build & register with:
+#   cd fine-tuning
+#   ollama create rukiai-gemma -f Modelfile
+#
+# Then point the backend at it (in backend/.env):
+#   ollama_model=rukiai-gemma
+#
+# Verify:
+#   ollama run rukiai-gemma "What's the difference between PPF and NPS?"
+
+FROM ./output/gguf/unsloth.Q4_K_M.gguf
+
+# Gemma chat template — matches what prepare_dataset.py emits during training.
+TEMPLATE """{{ if .System }}<start_of_turn>user
+{{ .System }}
+
+{{ .Prompt }}<end_of_turn>
+{{ else }}<start_of_turn>user
+{{ .Prompt }}<end_of_turn>
+{{ end }}<start_of_turn>model
+{{ .Response }}<end_of_turn>
+"""
+
+# Stop tokens so generation halts at turn boundaries.
+PARAMETER stop "<start_of_turn>"
+PARAMETER stop "<end_of_turn>"
+
+# Sampling — slightly lower temperature than base Gemma. The fine-tune
+# learned a specific format, so we want it to stick to it.
+PARAMETER temperature 0.6
+PARAMETER top_p 0.9
+PARAMETER top_k 50
+PARAMETER repeat_penalty 1.05
+PARAMETER num_ctx 4096
+
+# Default system prompt — the backend overrides this per request via
+# _build_chat_system in ai_utils.py, but this is the fallback.
+SYSTEM """You are RukiAI, a personal finance advisor for Indian users. Give specific, actionable, numbers-backed advice grounded in the user's context. Use INR amounts, real Indian sections/schemes (80C, 80D, NPS, PPF, EPF, etc.), and cite RBI/SEBI/IRDAI/IT-Act guidance where relevant. Open longer answers with a brief Executive Summary, then use bullets, tables, or mermaid diagrams as needed. Keep replies tight."""

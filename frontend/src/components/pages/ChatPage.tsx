@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react"
-import { useMutation, useQuery } from "@tanstack/react-query"
-import { Link } from "@tanstack/react-router"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { Link, useNavigate } from "@tanstack/react-router"
 import { Send, Loader2, Sparkles, Plus, KeyRound, Server, ArrowRight } from "lucide-react"
 import { api, session, type ChatTurn, type UserType } from "@/lib/api"
 
@@ -10,9 +10,15 @@ const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "0.0.0.0"])
 const isHostedDeployment = () =>
   typeof window !== "undefined" && !LOCAL_HOSTS.has(window.location.hostname)
 
-export default function ChatPage() {
+interface ChatPageProps {
+  conversationId?: string
+}
+
+export default function ChatPage({ conversationId }: ChatPageProps = {}) {
   const sess = useMemo(() => session.read(), [])
   const userType = sess?.user_type as UserType | undefined
+  const navigate = useNavigate()
+  const queryClient = useQueryClient()
 
   const dashQuery = useQuery({
     queryKey: ["dashboard", userType],
@@ -27,30 +33,42 @@ export default function ChatPage() {
     retry: false,
   })
 
+  // Load persisted history when viewing an existing conversation.
+  const conversationQuery = useQuery({
+    queryKey: ["conversation", conversationId],
+    queryFn: () => api.getConversation(conversationId as string),
+    enabled: !!conversationId,
+    retry: false,
+  })
+
   const hosted = isHostedDeployment()
   const provider = aiSettingsQuery.data?.provider
   const hasApiKey = aiSettingsQuery.data?.has_api_key ?? false
-  // On a hosted deployment, the local Ollama runtime isn't available — gate
-  // chat behind a cloud provider that has an API key configured.
   const needsCloudSetup =
     hosted && aiSettingsQuery.isSuccess && (provider === "local" || !hasApiKey)
 
-  // Skip the backend's friendly fallback so we don't seed chat with an error
-  // string. This shows up for users whose advice was cached when their old
-  // provider was misconfigured (e.g. local Ollama on a hosted deployment).
   const rawAdvice = dashQuery.data?.ai_advice
-  const initialAdvice = rawAdvice && !rawAdvice.startsWith("Unable to generate") ? rawAdvice : undefined
+  const initialAdvice =
+    rawAdvice && !rawAdvice.startsWith("Unable to generate") ? rawAdvice : undefined
+
   const [messages, setMessages] = useState<ChatTurn[]>([])
   const [input, setInput] = useState("")
   const scrollRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
 
-  // Seed the conversation with the existing AI advice once it's available.
+  // When the route's conversationId changes, reset local state and load
+  // its history. For a fresh /dashboard/chat (no id), seed with the dashboard advice.
   useEffect(() => {
-    if (initialAdvice && messages.length === 0) {
-      setMessages([{ role: "assistant", content: initialAdvice }])
+    if (conversationId) {
+      const loaded = conversationQuery.data?.messages
+      setMessages(loaded ?? [])
+    } else {
+      setMessages(initialAdvice ? [{ role: "assistant", content: initialAdvice }] : [])
     }
-  }, [initialAdvice, messages.length])
+    // We intentionally key off conversationId + the loaded data — switching chats
+    // should clear the view, and the initialAdvice seed only applies to new chats.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conversationId, conversationQuery.data, initialAdvice])
 
   // Auto-scroll to bottom on new messages.
   useEffect(() => {
@@ -60,12 +78,24 @@ export default function ChatPage() {
   const sendMutation = useMutation({
     mutationFn: async (msg: string) => {
       if (!userType) throw new Error("Missing user type")
-      const history = messages
-      const res = await api.chat(userType, msg, history)
-      return res.reply
+      // Optimistic: show the user's message immediately.
+      setMessages((prev) => [...prev, { role: "user", content: msg }])
+      const res = await api.chat(userType, msg, messages, conversationId)
+      return res
     },
-    onSuccess: (reply, msg) => {
-      setMessages((prev) => [...prev, { role: "user", content: msg }, { role: "assistant", content: reply }])
+    onSuccess: (res) => {
+      setMessages((prev) => [...prev, { role: "assistant", content: res.reply }])
+      // Refresh the sidebar list so the conversation order/title updates.
+      queryClient.invalidateQueries({ queryKey: ["conversations"] })
+      // First message of a brand-new chat — navigate to the conversation URL
+      // so refresh works and the sidebar can highlight it.
+      if (!conversationId && res.conversation_id) {
+        navigate({ to: `/dashboard/chat/${res.conversation_id}` })
+      }
+    },
+    onError: () => {
+      // Roll back the optimistic user message on failure.
+      setMessages((prev) => (prev.length && prev[prev.length - 1].role === "user" ? prev.slice(0, -1) : prev))
     },
   })
 
@@ -139,6 +169,15 @@ export default function ChatPage() {
 
   if (needsCloudSetup) {
     return <CloudSetupGate provider={provider} hasApiKey={hasApiKey} />
+  }
+
+  // Show a spinner while loading an existing conversation's history.
+  if (conversationId && conversationQuery.isLoading) {
+    return (
+      <div className="flex flex-col h-[calc(100vh-3.5rem)] md:h-screen items-center justify-center">
+        <Loader2 className="text-white/40 animate-spin" size={24} />
+      </div>
+    )
   }
 
   const isEmpty = messages.length === 0 && !dashQuery.isLoading

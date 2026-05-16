@@ -12,6 +12,7 @@ from src.models.guest_user_model import GuestUser
 from src.models.feedback_model import Feedback
 from src.models.knowledge_model import KnowledgeChunk
 from src.models.chat_message_model import ChatMessage
+from src.models.conversation_model import Conversation
 
 
 async def init_db() -> None:
@@ -30,5 +31,6 @@ async def init_db() -> None:
             Feedback,
             KnowledgeChunk,
             ChatMessage,
+            Conversation,
         ],
     )
