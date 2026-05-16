@@ -2,6 +2,7 @@ import { useEffect, useState } from "react"
 import { Link, useRouterState } from "@tanstack/react-router"
 import { LayoutDashboard, MessageSquare, LogOut, Sparkles, Settings, Menu, X } from "lucide-react"
 import { api, session } from "@/lib/api"
+import ConversationList from "@/components/ConversationList"
 
 const NAV = [
   { to: "/dashboard", label: "Overview", icon: LayoutDashboard },
@@ -40,10 +41,13 @@ export default function Sidebar() {
   }
 
   const navList = (
-    <nav className="px-3 flex-1 space-y-1">
+    <nav className="px-3 space-y-1">
       {NAV.map((item) => {
         const Icon = item.icon
-        const active = path === item.to
+        // Highlight "AI Chat" for both the base /dashboard/chat path and conversation pages.
+        const active =
+          path === item.to ||
+          (item.to === "/dashboard/chat" && path.startsWith("/dashboard/chat"))
         return (
           <Link
             key={item.to}
@@ -60,6 +64,12 @@ export default function Sidebar() {
         )
       })}
     </nav>
+  )
+
+  const conversations = (
+    <div className="mt-4 flex-1 min-h-0 flex flex-col border-t border-white/5 pt-3">
+      <ConversationList />
+    </div>
   )
 
   const logoutButton = (
@@ -128,6 +138,7 @@ export default function Sidebar() {
             </button>
           </div>
           {navList}
+          {conversations}
           {logoutButton}
         </aside>
       </div>
@@ -143,6 +154,7 @@ export default function Sidebar() {
           </Link>
         </div>
         {navList}
+        {conversations}
         {logoutButton}
       </aside>
     </>

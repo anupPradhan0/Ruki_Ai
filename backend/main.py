@@ -11,6 +11,7 @@ from src.routers.dashboard_router import router as dashboard_router
 from src.routers.feedback_router import router as feedback_router
 from src.routers.quiz_router import router as quiz_router
 from src.routers.chat_router import router as chat_router
+from src.routers.conversation_router import router as conversation_router
 from src.routers.ai_settings_router import router as ai_settings_router
 
 
@@ -58,6 +59,7 @@ app.include_router(dashboard_router)
 app.include_router(feedback_router)
 app.include_router(quiz_router)
 app.include_router(chat_router)
+app.include_router(conversation_router)
 app.include_router(ai_settings_router)
 
 

@@ -7,6 +7,7 @@ from pymongo import IndexModel, ASCENDING
 
 class ChatMessage(Document):
     user_id: PydanticObjectId
+    conversation_id: Optional[PydanticObjectId] = None
     role: str  # "user" | "assistant"
     content: str
     user_type: Optional[str] = None
@@ -19,4 +20,5 @@ class ChatMessage(Document):
         indexes = [
             IndexModel([("user_id", ASCENDING)], name="user_id_idx"),
             IndexModel([("created_at", ASCENDING)], name="created_at_idx"),
+            IndexModel([("conversation_id", ASCENDING), ("created_at", ASCENDING)], name="conversation_created_idx"),
         ]

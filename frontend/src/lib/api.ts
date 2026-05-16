@@ -457,14 +457,30 @@ export const api = {
       body: JSON.stringify({ user_id: session.read()?.user_id, answers }),
     }),
 
-  chat: (type: UserType, message: string, history: ChatTurn[]) =>
-    request<{ reply: string }>(`/chat/${type}`, {
+  chat: (type: UserType, message: string, history: ChatTurn[], conversationId?: string) =>
+    request<{ reply: string; conversation_id: string }>(`/chat/${type}`, {
       method: "POST",
       body: JSON.stringify({
         user_id: session.read()?.user_id,
         message,
         history,
+        conversation_id: conversationId,
       }),
+    }),
+
+  listConversations: () => request<ConversationSummary[]>("/conversations"),
+
+  getConversation: (id: string) => request<ConversationDetail>(`/conversations/${id}`),
+
+  renameConversation: (id: string, title: string) =>
+    request<ConversationSummary>(`/conversations/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ title }),
+    }),
+
+  deleteConversation: (id: string) =>
+    request<null>(`/conversations/${id}`, {
+      method: "DELETE",
     }),
 
   getAiProviders: () => request<AiProvidersResponse>("/ai-settings/providers"),
@@ -511,6 +527,18 @@ export interface QuizAnswer {
 export interface ChatTurn {
   role: "user" | "assistant"
   content: string
+}
+
+export interface ConversationSummary {
+  id: string
+  title: string
+  user_type?: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface ConversationDetail extends ConversationSummary {
+  messages: ChatTurn[]
 }
 
 // ── Local session helpers ─────────────────────────────────────────────────
