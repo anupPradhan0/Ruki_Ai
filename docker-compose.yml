@@ -13,6 +13,11 @@ services:
       # the HOST (not inside the container). Works on Linux thanks to the
       # extra_hosts mapping below; works out-of-the-box on Docker Desktop.
       OLLAMA_HOST: http://host.docker.internal:11434
+      # Inside the container, "localhost" is the container itself — point at
+      # the compose service name instead so the backend can reach Mongo.
+      # Must match the lowercase key in .env so pydantic-settings picks this
+      # override over the env_file value.
+      mongo_uri: mongodb://${mongo_root_user}:${mongo_root_password}@mongo:27017
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
@@ -36,8 +41,10 @@ services:
   mongo:
     image: mongo:7
     container_name: rukiai_mongo
-    ports:
-      - "27017:27017"
+    # No host port published — the backend container reaches mongo on the
+    # internal docker network as `mongo:27017`. If you need to connect from
+    # the host (Compass, local uvicorn), re-add `ports: ["27018:27017"]` and
+    # update backend/.env's mongo_uri to use port 27018.
     environment:
       MONGO_INITDB_ROOT_USERNAME: ${mongo_root_user}
       MONGO_INITDB_ROOT_PASSWORD: ${mongo_root_password}
