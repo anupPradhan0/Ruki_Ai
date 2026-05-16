@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Link, useNavigate } from "@tanstack/react-router"
 import { Send, Loader2, Sparkles, Plus, KeyRound, Server, ArrowRight } from "lucide-react"
-import { api, session, type ChatTurn, type UserType } from "@/lib/api"
+import { api, session, type ChatTurn, type ConversationDetail, type UserType } from "@/lib/api"
 
 const VALID_TYPES: UserType[] = ["student", "employed", "unemployed", "retired"]
 
@@ -56,19 +56,28 @@ export default function ChatPage({ conversationId }: ChatPageProps = {}) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
 
-  // When the route's conversationId changes, reset local state and load
-  // its history. For a fresh /dashboard/chat (no id), seed with the dashboard advice.
+  // Sync local state with the route. For an existing conversation, load from
+  // the query — but only when data is actually available, so we don't clobber
+  // messages that were seeded via queryClient.setQueryData (see the mutation
+  // onSuccess) right before a navigation from a brand-new chat.
   useEffect(() => {
-    if (conversationId) {
-      const loaded = conversationQuery.data?.messages
-      setMessages(loaded ?? [])
-    } else {
+    if (!conversationId) {
       setMessages(initialAdvice ? [{ role: "assistant", content: initialAdvice }] : [])
+      return
     }
-    // We intentionally key off conversationId + the loaded data — switching chats
-    // should clear the view, and the initialAdvice seed only applies to new chats.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    if (conversationQuery.data) {
+      setMessages(conversationQuery.data.messages)
+    }
   }, [conversationId, conversationQuery.data, initialAdvice])
+
+  // If the conversation isn't found (deleted, stale URL, typo), bounce to a
+  // fresh chat rather than leaving the page in an empty / broken state.
+  useEffect(() => {
+    if (conversationId && conversationQuery.isError) {
+      queryClient.removeQueries({ queryKey: ["conversation", conversationId] })
+      navigate({ to: "/dashboard/chat" })
+    }
+  }, [conversationId, conversationQuery.isError, navigate, queryClient])
 
   // Auto-scroll to bottom on new messages.
   useEffect(() => {
@@ -78,24 +87,54 @@ export default function ChatPage({ conversationId }: ChatPageProps = {}) {
   const sendMutation = useMutation({
     mutationFn: async (msg: string) => {
       if (!userType) throw new Error("Missing user type")
-      // Optimistic: show the user's message immediately.
-      setMessages((prev) => [...prev, { role: "user", content: msg }])
-      const res = await api.chat(userType, msg, messages, conversationId)
-      return res
+      // Snapshot the current history so the optimistic update and the API
+      // call use the same value — closure over `messages` directly would be
+      // a render behind by the time the request goes out.
+      const historyAtSend = messages
+      const optimistic: ChatTurn[] = [...historyAtSend, { role: "user", content: msg }]
+      setMessages(optimistic)
+      const res = await api.chat(userType, msg, historyAtSend, conversationId)
+      return { res, optimistic }
     },
-    onSuccess: (res) => {
-      setMessages((prev) => [...prev, { role: "assistant", content: res.reply }])
-      // Refresh the sidebar list so the conversation order/title updates.
+    onSuccess: ({ res, optimistic }, sentMsg) => {
+      const finalMessages: ChatTurn[] = [
+        ...optimistic,
+        { role: "assistant", content: res.reply },
+      ]
+      setMessages(finalMessages)
       queryClient.invalidateQueries({ queryKey: ["conversations"] })
-      // First message of a brand-new chat — navigate to the conversation URL
-      // so refresh works and the sidebar can highlight it.
+
       if (!conversationId && res.conversation_id) {
+        // Seed the new conversation's cache so the navigated-to ChatPage
+        // instance renders the messages we just sent without a flicker.
+        const now = new Date().toISOString()
+        const seeded: ConversationDetail = {
+          id: res.conversation_id,
+          title: sentMsg.slice(0, 60),
+          user_type: userType ?? null,
+          created_at: now,
+          updated_at: now,
+          messages: finalMessages,
+        }
+        queryClient.setQueryData(["conversation", res.conversation_id], seeded)
         navigate({ to: `/dashboard/chat/${res.conversation_id}` })
+      } else if (conversationId) {
+        // Keep the open conversation's cache in sync so a navigate-away and
+        // back doesn't lose the latest exchange.
+        queryClient.setQueryData<ConversationDetail | undefined>(
+          ["conversation", conversationId],
+          (prev) =>
+            prev
+              ? { ...prev, messages: finalMessages, updated_at: new Date().toISOString() }
+              : prev,
+        )
       }
     },
     onError: () => {
       // Roll back the optimistic user message on failure.
-      setMessages((prev) => (prev.length && prev[prev.length - 1].role === "user" ? prev.slice(0, -1) : prev))
+      setMessages((prev) =>
+        prev.length && prev[prev.length - 1].role === "user" ? prev.slice(0, -1) : prev,
+      )
     },
   })
 

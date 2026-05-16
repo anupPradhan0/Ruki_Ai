@@ -7,8 +7,9 @@ import { api, type ConversationSummary } from "@/lib/api"
 export default function ConversationList() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
-  const routerState = useRouterState()
-  const path = routerState.location.pathname
+  // Use the selector form so we only re-render on path changes, not on every
+  // router state mutation (matches/loaders/etc.).
+  const path = useRouterState({ select: (s) => s.location.pathname })
 
   // /dashboard/chat/<id> — pull the id out of the path
   const activeId = (() => {
@@ -175,7 +176,10 @@ function ConversationItem({
               setMenuOpen((o) => !o)
             }}
             className={`p-1 rounded-md transition-opacity shrink-0 ${
-              menuOpen || active ? "opacity-80" : "opacity-0 group-hover:opacity-60"
+              menuOpen || active
+                ? "opacity-80"
+                : // Visible by default on touch (no hover); hidden until hover on md+.
+                  "opacity-60 md:opacity-0 md:group-hover:opacity-60"
             } hover:opacity-100 hover:bg-white/10`}
             aria-label="More"
           >
