@@ -36,7 +36,11 @@ try-it-out is at **http://localhost:8000/docs** while the backend is running.
 | POST | `/userType/unemployed` | ✅ | Submit unemployed onboarding form |
 | POST | `/userType/retired` | ✅ | Submit retired onboarding form |
 | **POST** | **`/quiz/{user_type}`** | ✅ | **Save 10-question self-assessment for a user type** |
-| **POST** | **`/chat/{user_type}`** | ✅ | **Conversational AI follow-up (Cohere chat)** |
+| **POST** | **`/chat/{user_type}`** | ✅ | **Conversational AI follow-up — persists turns, returns `conversation_id`** |
+| **GET** | **`/conversations`** | ✅ | **List the user's conversations for the sidebar** |
+| **GET** | **`/conversations/{id}`** | ✅ | **Load a conversation + its full message list** |
+| **PATCH** | **`/conversations/{id}`** | ✅ | **Rename a conversation** |
+| **DELETE** | **`/conversations/{id}`** | ✅ | **Delete a conversation and all its messages** |
 | GET | `/dashboard/student` | ✅ | Get student dashboard with AI advice |
 | GET | `/dashboard/employed` | ✅ | Get employed dashboard with AI advice |
 | GET | `/dashboard/unemployed` | ✅ | Get unemployed dashboard with AI advice |
@@ -294,10 +298,24 @@ profile, self-assessment, and two RAG blocks (curated finance knowledge
 is grounded in their real data plus factual context.
 
 Every turn (user message + assistant reply) is **persisted** to the
-`chat_messages` collection with an embedding so future conversations can
-retrieve them. The frontend still keeps the in-flight conversation in
-component state and sends the full history on each turn — server-side
-RAG augments that with semantically relevant older turns automatically.
+`chat_messages` collection, grouped under a `conversations` document. The
+backend is the **source of truth** for chat history — it loads the last 20
+turns from MongoDB on each request and ignores whatever `history` the client
+sends. The client-side `history` field is kept in the schema only for
+backwards compatibility and may be empty.
+
+Conversations work the same way as ChatGPT / Gemini / Claude:
+- The first message in a new chat **implicitly creates** the conversation
+  (no separate "create conversation" call). The response includes the new
+  `conversation_id`; the frontend then navigates to `/dashboard/chat/<id>`.
+- Sending a `conversation_id` continues that conversation — the backend
+  appends both turns and bumps its `updated_at` so it floats to the top of
+  the sidebar.
+- Titles auto-generate from the first message (first 60 chars). Users can
+  rename via `PATCH /conversations/{id}`.
+- All `/conversations*` endpoints filter by the authenticated user — a
+  conversation that exists but isn't yours returns `404` (no leak of which
+  IDs exist).
 
 ### `POST /chat/{user_type}` 🔒
 
@@ -306,27 +324,107 @@ RAG augments that with semantically relevant older turns automatically.
 {
   "user_id": "65a...",
   "message": "Should I prioritize paying off the loan or investing?",
-  "history": [
-    { "role": "assistant", "content": "## Priority Recommendations\n• [High] Build emergency fund..." },
-    { "role": "user", "content": "What about my credit card debt?" },
-    { "role": "assistant", "content": "..." }
+  "conversation_id": "6a08...",
+  "history": []
+}
+```
+
+- `conversation_id` is **optional**. Omit it (or send `null`) on the first
+  message of a new chat — the backend creates the conversation and returns
+  the new id in the response.
+- `history` is accepted for backwards compatibility but **not used** for
+  building the LLM context. The backend pulls the real history from the DB.
+- `message` is 1–4000 chars; outside that range returns `422`.
+
+**Response — 200**
+```json
+{
+  "reply": "Given your runway, prioritize the credit card...",
+  "conversation_id": "6a08bf3e8c2a1d4f5e6a7b8c"
+}
+```
+
+**Errors**:
+- `400` — unsupported user type / invalid `user_id` / invalid `conversation_id`
+- `404` — profile not found / `conversation_id` doesn't belong to you
+- `200` with apologetic reply text if the AI provider fails (no 5xx leak; the user message is still persisted)
+
+---
+
+## Conversation history
+
+Per-user list of past chats — what the sidebar in `/dashboard/chat` shows.
+Conversations are created implicitly by `POST /chat/{user_type}`; these
+endpoints handle everything after that.
+
+### `GET /conversations` 🔒
+
+Returns the authenticated user's conversations, newest activity first.
+
+**Response — 200**
+```json
+[
+  {
+    "id": "6a08bf3e8c2a1d4f5e6a7b8c",
+    "title": "Should I prioritize paying off the loan or...",
+    "user_type": "employed",
+    "created_at": "2026-05-16T06:09:25.588Z",
+    "updated_at": "2026-05-16T06:11:02.342Z"
+  }
+]
+```
+
+Sort order is `updated_at` descending — sending a new message in a chat
+bumps it to the top automatically.
+
+### `GET /conversations/{id}` 🔒
+
+Returns the conversation metadata + all messages in chronological order.
+
+**Response — 200**
+```json
+{
+  "id": "6a08bf3e8c2a1d4f5e6a7b8c",
+  "title": "Should I prioritize paying off the loan or...",
+  "user_type": "employed",
+  "created_at": "2026-05-16T06:09:25.588Z",
+  "updated_at": "2026-05-16T06:11:02.342Z",
+  "messages": [
+    { "role": "user", "content": "Should I prioritize paying off the loan or investing?" },
+    { "role": "assistant", "content": "Given your runway, prioritize the credit card..." }
   ]
 }
 ```
 
-- `history` is an ordered list of prior turns. Roles are `"user"` or `"assistant"`.
-- Each `content` is 1–4000 chars; messages outside that range get a 422.
-- The frontend seeds `history` with the existing `ai_advice` as the first assistant message.
+**Errors**:
+- `400` — `id` is not a valid ObjectId
+- `404` — conversation doesn't exist or isn't yours
 
-**Response — 200**
+### `PATCH /conversations/{id}` 🔒
+
+Rename a conversation. Returns the updated summary.
+
+**Request body**
 ```json
-{ "reply": "Given your runway, prioritize the credit card..." }
+{ "title": "Loan vs. investing" }
 ```
 
+- `title` is 1–200 chars (trimmed on the server; longer values are
+  truncated). Empty string → `400`.
+
+**Response — 200** — the summary shape from `GET /conversations`.
+
+### `DELETE /conversations/{id}` 🔒
+
+Deletes the conversation **and all its messages**. The operation is
+ownership-checked; it does not delete RAG embeddings created by older code
+that wasn't tagged with `conversation_id`.
+
+**Response — 204** (no body).
+
 **Errors**:
-- `400` — unsupported user type / invalid user_id
-- `404` — profile not found
-- `200` with apologetic reply text if Cohere fails (no 5xx leak)
+- `400` — invalid `id`
+- `404` — conversation doesn't exist or isn't yours
 
 ---
 
