@@ -9,17 +9,19 @@ services:
     env_file:
       - ./backend/.env
     environment:
-      # Override .env so the containerized backend talks to Ollama running on
-      # the HOST (not inside the container). Works on Linux thanks to the
-      # extra_hosts mapping below; works out-of-the-box on Docker Desktop.
-      OLLAMA_HOST: http://host.docker.internal:11434
+      # Talk to Ollama on the HOST via the compose-network gateway. The
+      # default `host.docker.internal:host-gateway` resolves to docker0's IP
+      # (172.17.0.1), which doesn't work here because docker0 is DOWN on this
+      # machine. The compose-network gateway (172.21.0.1) is up and routes
+      # back to the host. UFW must allow 172.16.0.0/12 -> port 11434.
+      # Lowercase key to override the lowercase value in .env (pydantic-settings
+      # is case-insensitive and matches the .env spelling first).
+      ollama_host: http://172.21.0.1:11434
       # Inside the container, "localhost" is the container itself — point at
       # the compose service name instead so the backend can reach Mongo.
       # Must match the lowercase key in .env so pydantic-settings picks this
       # override over the env_file value.
       mongo_uri: mongodb://${mongo_root_user}:${mongo_root_password}@mongo:27017
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     depends_on:
       mongo:
         condition: service_healthy
