@@ -23,6 +23,7 @@ import { Route as AuthSignupRouteImport } from './routes/_auth/signup'
 import { Route as AuthQuizRouteImport } from './routes/_auth/quiz'
 import { Route as AuthOnboardingRouteImport } from './routes/_auth/onboarding'
 import { Route as AuthLoginRouteImport } from './routes/_auth/login'
+import { Route as DashboardChatIndexRouteImport } from './routes/dashboard/chat.index'
 import { Route as DashboardChatConversationIdRouteImport } from './routes/dashboard/chat.$conversationId'
 
 const DashboardRoute = DashboardRouteImport.update({
@@ -93,6 +94,11 @@ const AuthLoginRoute = AuthLoginRouteImport.update({
   path: '/login',
   getParentRoute: () => AuthRoute,
 } as any)
+const DashboardChatIndexRoute = DashboardChatIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => DashboardChatRoute,
+} as any)
 const DashboardChatConversationIdRoute =
   DashboardChatConversationIdRouteImport.update({
     id: '/$conversationId',
@@ -114,6 +120,7 @@ export interface FileRoutesByFullPath {
   '/dashboard/settings': typeof DashboardSettingsRoute
   '/dashboard/': typeof DashboardIndexRoute
   '/dashboard/chat/$conversationId': typeof DashboardChatConversationIdRoute
+  '/dashboard/chat/': typeof DashboardChatIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof LayoutIndexRoute
@@ -124,10 +131,10 @@ export interface FileRoutesByTo {
   '/about': typeof LayoutAboutRoute
   '/features': typeof LayoutFeaturesRoute
   '/how-it-works': typeof LayoutHowItWorksRoute
-  '/dashboard/chat': typeof DashboardChatRouteWithChildren
   '/dashboard/settings': typeof DashboardSettingsRoute
   '/dashboard': typeof DashboardIndexRoute
   '/dashboard/chat/$conversationId': typeof DashboardChatConversationIdRoute
+  '/dashboard/chat': typeof DashboardChatIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -146,6 +153,7 @@ export interface FileRoutesById {
   '/_layout/': typeof LayoutIndexRoute
   '/dashboard/': typeof DashboardIndexRoute
   '/dashboard/chat/$conversationId': typeof DashboardChatConversationIdRoute
+  '/dashboard/chat/': typeof DashboardChatIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -163,6 +171,7 @@ export interface FileRouteTypes {
     | '/dashboard/settings'
     | '/dashboard/'
     | '/dashboard/chat/$conversationId'
+    | '/dashboard/chat/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -173,10 +182,10 @@ export interface FileRouteTypes {
     | '/about'
     | '/features'
     | '/how-it-works'
-    | '/dashboard/chat'
     | '/dashboard/settings'
     | '/dashboard'
     | '/dashboard/chat/$conversationId'
+    | '/dashboard/chat'
   id:
     | '__root__'
     | '/_auth'
@@ -194,6 +203,7 @@ export interface FileRouteTypes {
     | '/_layout/'
     | '/dashboard/'
     | '/dashboard/chat/$conversationId'
+    | '/dashboard/chat/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -302,6 +312,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthLoginRouteImport
       parentRoute: typeof AuthRoute
     }
+    '/dashboard/chat/': {
+      id: '/dashboard/chat/'
+      path: '/'
+      fullPath: '/dashboard/chat/'
+      preLoaderRoute: typeof DashboardChatIndexRouteImport
+      parentRoute: typeof DashboardChatRoute
+    }
     '/dashboard/chat/$conversationId': {
       id: '/dashboard/chat/$conversationId'
       path: '/$conversationId'
@@ -347,10 +364,12 @@ const LayoutRouteWithChildren =
 
 interface DashboardChatRouteChildren {
   DashboardChatConversationIdRoute: typeof DashboardChatConversationIdRoute
+  DashboardChatIndexRoute: typeof DashboardChatIndexRoute
 }
 
 const DashboardChatRouteChildren: DashboardChatRouteChildren = {
   DashboardChatConversationIdRoute: DashboardChatConversationIdRoute,
+  DashboardChatIndexRoute: DashboardChatIndexRoute,
 }
 
 const DashboardChatRouteWithChildren = DashboardChatRoute._addFileChildren(
