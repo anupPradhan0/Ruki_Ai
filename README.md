@@ -18,10 +18,10 @@
 |---|---|
 | **Backend** | Python 3.11 · FastAPI · Beanie (async MongoDB ODM) · Pydantic v2 |
 | **Frontend** | React 18 · TypeScript · Vite · TanStack Router · TanStack Query · Tailwind CSS |
-| **Database** | MongoDB 7 |
+| **Database** | MongoDB 7 (text + metadata) · Qdrant 1.12 (vector store) |
 | **AI (default, local)** | Ollama · Gemma 4 E2B (chat) · `nomic-embed-text` (embeddings) |
 | **AI (optional cloud)** | Google Gemini · OpenAI · Anthropic Claude · Cohere — per-user API key |
-| **RAG** | Local embeddings + cosine similarity over `knowledge_chunks` (curated finance facts) and `chat_messages` (this user's past turns) |
+| **RAG** | **Hybrid** retrieval — BM25 + vector with RRF + MMR for the finance KB; vector + time-decay for per-user chat memory. Routed by a regex-then-LLM classifier. Embeddings always local. See [`docs/RAG.md`](docs/RAG.md). |
 | **Auth** | JWT in HTTP-only cookies |
 | **Email** | aiosmtplib (Gmail SMTP) |
 | **Infra** | Docker Compose |
@@ -45,9 +45,12 @@ Ruki_Ai/
 │       ├── services/      Business logic
 │       ├── routers/       FastAPI route handlers
 │       ├── middleware/    JWT auth dependency
-│       └── utils/         JWT, password, ai_utils (multi-provider), embed_utils, rag_utils, email
+│       ├── services/      …includes qdrant_client, bm25_index, retrieval,
+│       │                  query_router, memory_writer (RAG plumbing)
+│       └── utils/         JWT, password, ai_utils (multi-provider), embed_utils, email
 │   └── scripts/
-│       └── seed_knowledge.py   Populates the RAG knowledge base
+│       ├── ingest_finance_docs.py   Chunk + embed + upsert finance docs into Qdrant
+│       └── migrate_remove_old_rag.py  One-shot: lift legacy in-Mongo embeddings into Qdrant
 │
 ├── frontend/             React + Vite frontend
 │   ├── src/
@@ -63,7 +66,7 @@ Ruki_Ai/
 │   ├── GETTING_STARTED.md
 │   └── TECH_STACK.md
 │
-├── docker-compose.yml    3-container stack (mongo + backend + frontend)
+├── docker-compose.yml    4-container stack (mongo + qdrant + backend + frontend)
 └── .env                  Root env vars for Docker Compose
 ```
 
@@ -89,19 +92,20 @@ docker compose up --build
 ### Option 2 — Local development
 
 ```bash
-# 1. MongoDB only via Docker
-docker compose up -d mongo
+# 1. MongoDB + Qdrant only via Docker
+docker compose up -d mongo qdrant
 
 # 2. Install Ollama and pull the local AI models
 curl -fsSL https://ollama.com/install.sh | sh
 ollama pull gemma4:e2b           # chat / advice generation
-ollama pull nomic-embed-text     # embeddings for RAG
+ollama pull nomic-embed-text     # embeddings for RAG (768-dim, must match Qdrant)
 
 # 3. Backend
 cd backend
 python3 -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
-python scripts/seed_knowledge.py     # one-time: seed the finance knowledge base
+python scripts/ingest_finance_docs.py   # seed the RAG knowledge base into Qdrant
+# (point at your own .txt/.md files instead: `python scripts/ingest_finance_docs.py docs/finance/`)
 uvicorn main:app --reload
 
 # 4. Frontend (separate terminal)
@@ -121,7 +125,8 @@ Full documentation lives in [`docs/`](./docs/):
 | File | What's inside |
 |---|---|
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Layers, data flow, request lifecycle, design decisions |
-| [`docs/API.md`](docs/API.md) | All 22 API endpoints with request/response shapes |
+| [`docs/RAG.md`](docs/RAG.md) | Deep dive into the RAG system — pipelines, retrieval algorithms, code map, ops |
+| [`docs/API.md`](docs/API.md) | All API endpoints with request/response shapes |
 | [`docs/GETTING_STARTED.md`](docs/GETTING_STARTED.md) | Detailed local setup, common errors, troubleshooting |
 | [`docs/TECH_STACK.md`](docs/TECH_STACK.md) | What we use and why we chose it |
 
@@ -134,8 +139,9 @@ The interactive API explorer is always at **http://localhost:8000/docs** when th
 - **Multi-profile support** — Student, Employed, Unemployed, Retired, Guest. Each profile captures a tailored set of financial info
 - **Local-first AI (privacy by default)** — Gemma 4 E2B runs entirely on your server via Ollama. No data leaves the box unless the user explicitly opts in.
 - **Pick your provider per user** — Settings page lets each user switch to Gemini, OpenAI, Anthropic, or Cohere with their own API key (3 model options each)
-- **Knowledge RAG** — Every reply is grounded in a curated knowledge base of India-flavored finance facts (PPF, ELSS, EMI rules, SCSS, NPS, etc.) retrieved by semantic similarity
-- **User-data RAG** — Chat turns are persisted with embeddings, scoped per user, so the AI remembers prior conversations across sessions
+- **Hybrid finance-KB RAG** — Curated India-flavored facts (PPF, ELSS, EMI rules, SCSS, NPS, …) retrieved via **BM25 + vector search merged by RRF, then re-ranked by MMR** — so exact terms like `80C` or `₹1.5 lakh` aren't lost by pure embedding search
+- **Per-user memory RAG** — Every chat turn is embedded into a per-user Qdrant namespace; retrieval combines vector similarity with **exponential time-decay** (30-day half-life) so recent context outweighs stale chats
+- **Smart query router** — Each message is classified `KNOWLEDGE` / `MEMORY` / `BOTH` (regex first, single-token LLM call as fallback) so we only pay for the retrieval the question actually needs
 - **10-question Self-Assessment quiz** — answers are first-class context in the prompt, anchoring advice to the user's habits and risk appetite
 - **7-day advice cache** — Dashboard advice is cached, regenerated when stale or after the quiz is updated
 - **JWT cookie auth** — HTTP-only cookies, 30-day expiry for users, 24-hour expiry for guests

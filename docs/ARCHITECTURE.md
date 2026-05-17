@@ -9,19 +9,24 @@ frontend to MongoDB and back, and the design decisions behind each layer.
 
 ```
 ┌─────────────────┐     HTTP/JSON     ┌─────────────────────────────┐    ┌─────────────┐
-│  React Frontend │ ───────────────▶  │   FastAPI Backend           │ ──▶│  MongoDB    │
-│  (Vite + TSR    │ ◀───────────────  │   (Python 3.11, port 8000)  │ ◀──│   (port     │
-│   port 5173)    │      Cookie JWT   │                             │    │   27017)    │
-└─────────────────┘                   └──────┬──────────┬───────────┘    └─────────────┘
-                                             │          │
-                                  HTTP local │          │ HTTPS  (only when user opts in)
-                                             ▼          ▼
-                                    ┌────────────────┐  ┌─────────────────────────────┐
-                                    │  Ollama (local)│  │  User-selected cloud:       │
-                                    │  Gemma 4 E2B   │  │  Gemini · OpenAI · Claude · │
-                                    │  nomic-embed   │  │  Cohere — per-user API key  │
-                                    └────────────────┘  └─────────────────────────────┘
-                                          (default — embeddings ALWAYS local)
+│  React Frontend │ ───────────────▶  │   FastAPI Backend           │ ──▶│  MongoDB 7  │
+│  (Vite + TSR    │ ◀───────────────  │   (Python 3.11, port 8000)  │ ◀──│   (text +   │
+│   port 5173)    │      Cookie JWT   │                             │    │   metadata) │
+└─────────────────┘                   └──┬───────┬───────┬──────────┘    └─────────────┘
+                                         │       │       │
+                                         │       │       └──▶ ┌────────────────────┐
+                                         │       │            │ Qdrant 1.12        │
+                                         │       │            │ (vectors only —    │
+                                         │       │            │  KB + per-user mem)│
+                                         │       │            └────────────────────┘
+                                  HTTP   │       │ HTTPS  (only when user opts in)
+                                  local  ▼       ▼
+                                ┌────────────────┐  ┌─────────────────────────────┐
+                                │  Ollama (local)│  │  User-selected cloud:       │
+                                │  Gemma 4 E2B   │  │  Gemini · OpenAI · Claude · │
+                                │  nomic-embed   │  │  Cohere — per-user API key  │
+                                └────────────────┘  └─────────────────────────────┘
+                                      (default — embeddings ALWAYS local)
 ```
 
 ---
@@ -84,8 +89,8 @@ backend/
     │   ├── guest_model.py              ← Anonymous guest session (TTL 2 days)
     │   ├── guest_user_model.py
     │   ├── feedback_model.py
-    │   ├── knowledge_model.py          ← KnowledgeChunk — finance facts + embedding
-    │   └── chat_message_model.py       ← ChatMessage — per-user persisted chat for RAG
+    │   ├── knowledge_model.py          ← KnowledgeChunk — text-only mirror of a Qdrant point
+    │   └── chat_message_model.py       ← ChatMessage — authoritative chat log (vectors in Qdrant)
     │
     ├── schemas/                      ← API request/response shapes
     │   ├── common_schemas.py
@@ -119,7 +124,13 @@ backend/
     │   ├── feedback_service.py
     │   ├── quiz_service.py             ← save_quiz_responses(type, user_id, answers)
     │   ├── chat_service.py             ← chat_with_ai(type, ChatRequest)
-    │   └── ai_settings_service.py      ← list/get/update per-user AI provider settings
+    │   ├── ai_settings_service.py      ← list/get/update per-user AI provider settings
+    │   │
+    │   ├── qdrant_client.py            ← Async Qdrant singleton + init_qdrant
+    │   ├── bm25_index.py               ← In-memory BM25 over knowledge_chunks
+    │   ├── retrieval.py                ← retrieve_knowledge (RRF+MMR), retrieve_memory (decay+MMR)
+    │   ├── query_router.py             ← regex shortcut → LLM classifier (KNOWLEDGE/MEMORY/BOTH)
+    │   └── memory_writer.py            ← Qdrant upsert + per-user LRU prune + bg task tracker
     │
     ├── routers/
     │   ├── index_router.py             ← Public pages, send-email
@@ -139,14 +150,12 @@ backend/
         ├── password_utils.py
         ├── ai_utils.py                ← multi-provider dispatcher: Local Ollama / OpenAI /
         │                                Anthropic / Gemini / Cohere. Owns prompt templates.
-        ├── embed_utils.py             ← Ollama nomic-embed-text + cosine similarity
-        ├── rag_utils.py               ← retrieve_relevant_chunks (knowledge RAG)
-        │                                + retrieve_relevant_history (user-data RAG)
-        │                                + persist_chat_turn (writes to chat_messages)
+        ├── embed_utils.py             ← Ollama nomic-embed-text + embed_batch + cosine
         └── email_utils.py
 
 scripts/
-└── seed_knowledge.py                  ← one-time: embeds and inserts curated finance facts
+├── ingest_finance_docs.py             ← chunk + embed + upsert .txt/.md (or built-in seed)
+└── migrate_remove_old_rag.py          ← one-shot: hoist legacy in-Mongo embeddings into Qdrant
 ```
 
 ---
@@ -343,40 +352,20 @@ opted into a cloud provider.
 
 ### Two RAG pipelines, one prompt
 
-The prompt builders inject **two** retrieved blocks before the LLM sees the question:
+Vectors live in **Qdrant**, text/metadata lives in **MongoDB**. The chat flow
+runs a router → up to two retrieval pipelines in parallel → builds the prompt.
 
-1. **Knowledge RAG** — `knowledge_chunks` collection. Curated finance facts
-   (PPF rules, EMI ratios, SCSS rates, etc.). Indexed at seed time. Filtered
-   by `user_type` (or `null` for universal advice).
-2. **User-data RAG** — `chat_messages` collection. Every user/assistant turn
-   is persisted with an embedding. Strictly filtered by `user_id`. Excludes
-   the last 60 seconds so the in-flight conversation doesn't retrieve itself.
+| | Pipeline 1 — Knowledge | Pipeline 2 — User Memory |
+|---|---|---|
+| Qdrant collection | `finance_knowledge` (shared) | `user_chat_memory` (filtered by `user_id`) |
+| Retrieval | **BM25 + vector → RRF merge → MMR re-rank** | **Vector + time-decay → MMR re-rank** |
+| Why this shape | Finance is keyword-heavy (`80C`, `PPF`, `₹1.5L`) — pure vectors miss exact terms | Recency matters: a chat from yesterday > one from a year ago |
 
-**Retrieval pipeline (both pipelines):**
+Routing: regex shortcut first (`my/i/me/earlier` → MEMORY, `what is/explain/section N` → KNOWLEDGE); only ambiguous queries make a 1-token LLM call to classify. Failure mode = run both.
 
-```
-[1] Embed query ONCE per request and reuse for both retrievals (saves an
-    Ollama call per chat turn).
-[2] Skip RAG entirely if the message is shorter than RAG_MIN_QUERY_CHARS
-    (default 12 chars — short messages like "ok"/"thanks" don't need context).
-[3] Load candidates: filtered by user_type (knowledge) or user_id +
-    most-recent RAG_HISTORY_SCAN_LIMIT (history, default 500 messages).
-[4] Score with cosine similarity; drop anything below RAG_MIN_SIMILARITY
-    (default 0.30) so irrelevant context never reaches the LLM.
-[5] MMR selection — picks the top item then iteratively picks the next
-    chunk that maximizes:
-        λ · sim(query, chunk) − (1 − λ) · max_sim(chunk, already_picked)
-    where λ = RAG_MMR_LAMBDA (default 0.7). This prevents "3 nearly identical
-    chunks" failure mode and surfaces complementary information instead.
-[6] Truncate each rendered chunk at RAG_MAX_CHUNK_CHARS (default 500) before
-    injecting — keeps prompts tight, especially important on the local 2B model.
-```
+Embedding is computed **once per turn** (768-dim `nomic-embed-text`) and reused for retrieval and persistence. Persistence is fire-and-forget so Qdrant latency never blocks the reply; the source-of-truth Mongo write is synchronous.
 
-Both use cosine similarity in Python over all matching chunks. Brute-force is
-fine up to ~10k items; swap to MongoDB Atlas Vector Search or Qdrant when
-you outgrow that.
-
-**All thresholds are env-tunable** — see `RAG_*` settings in `config/settings.py`.
+For everything else — the RRF & MMR math, BM25 tokenizer, time-decay formula, prune behavior, failure modes, settings reference, evaluation, and how to add a new finance source — see [`docs/RAG.md`](./RAG.md).
 
 ### Self-Assessment as a first-class signal
 
@@ -393,8 +382,8 @@ Used by `GET /dashboard/{type}`.
 ```
 [1] _extract_essential_fields(profile, user_type)
     → income, goals, type-specific fields, self_assessment (10 quiz Q&A)
-[2] retrieve_relevant_chunks(query, user_type)  → knowledge RAG
-[3] retrieve_relevant_history(query, user_id)   → user-data RAG (past turns)
+[2] embed_text(rag_query)  ONCE, reused for both legs
+[3] gather(retrieve_knowledge(...), retrieve_memory(...))  → parallel
 [4] _build_advice_prompt() composes:
     PROFILE block + SELF-ASSESSMENT block + KNOWLEDGE block
     + PAST CONVERSATIONS block + REQUIREMENTS + FORMAT
@@ -404,21 +393,22 @@ Used by `GET /dashboard/{type}`.
 
 ### Conversational chat (`get_ai_chat_response`)
 
-Used by `POST /chat/{type}`. The flow below is what `ai_utils` does on a
-single turn; the surrounding `chat_service` handles conversation lookup,
-turn persistence, and `updated_at` bumps (see "Conversation persistence"
-below).
+Used by `POST /chat/{type}`. Returns `(reply, query_vec)` — side-effect-free
+so the caller can persist both turns with full control over IDs and ordering.
+The surrounding `chat_service` handles Mongo writes, schedules the Qdrant
+upsert via `memory_writer.schedule()`, and bumps `conversation.updated_at`.
 
 ```
 [1] Extract essentials from profile (same as above)
-[2] retrieve_relevant_chunks(message)  → top-k knowledge chunks for THIS question
-[3] retrieve_relevant_history(message, user_id)  → top-k past turns from THIS user
-[4] _build_chat_system() composes the system prompt:
+[2] embed_text(message)  ONCE — reused for retrieval AND returned to caller
+    (skipped entirely if message < RAG_MIN_QUERY_CHARS)
+[3] route_query(message) → KNOWLEDGE / MEMORY / BOTH
+[4] gather(retrieve_knowledge / retrieve_memory) for the chosen route(s)
+[5] _build_chat_system() composes the system prompt:
     persona + profile + self-assessment + past convos + knowledge + style rules
-[5] Append DB-loaded history (last 20 turns of this conversation) + new user message
-[6] _dispatch(ai_settings, messages) → user's chosen provider
-[7] Embedding pass + insert into chat_messages happens in chat_service, NOT here
-[8] Return reply
+[6] Append DB-loaded history (last 20 turns of this conversation) + new user message
+[7] _dispatch(ai_settings, messages) → user's chosen provider
+[8] Return (reply, query_vec) — persistence is the caller's responsibility
 ```
 
 ### Conversation persistence
@@ -481,8 +471,8 @@ Cascade rules:
 | `guests` | Anonymous sessions (TTL: 2 days) |
 | `guest_users` | Guest-submitted data (TTL: 7 days) |
 | `feedbacks` | Public feedback messages |
-| `knowledge_chunks` | Curated finance facts + embeddings (knowledge RAG source) |
-| `chat_messages` | Per-user persisted chat turns + embeddings (user-data RAG source) — tagged with `conversation_id` |
+| `knowledge_chunks` | Text-only mirror of `finance_knowledge` Qdrant points. `vector_id` links to the Qdrant ID, `chunk_hash` keeps re-ingestion idempotent. |
+| `chat_messages` | Authoritative chat log (source of truth) — text + metadata; optional `vector_id` back-link to the matching `user_chat_memory` Qdrant point. |
 | `conversations` | Sidebar-grouping doc per chat thread: `user_id`, `title`, `user_type`, timestamps |
 
 This keeps each schema focused, lets us add fields per type without bloating
@@ -500,7 +490,8 @@ the user model, and makes profile-specific queries fast.
 | `guests` | TTL on `created_at` — auto-delete after 2 days |
 | `guest_users` | `user_id` (unique), `current_status`, TTL `created_at` (7 days) |
 | `feedbacks` | `created_at` (desc), `is_public` |
-| `chat_messages` | `user_id`, `created_at`, **compound `(conversation_id, created_at)`** for fast per-conversation history reads |
+| `chat_messages` | `user_id`, `created_at`, compound **`(user_id, created_at desc)`** for per-user memory scans, compound **`(conversation_id, created_at)`** for per-conversation history reads |
+| `knowledge_chunks` | `user_type`, `created_at`, sparse-unique `vector_id`, sparse-unique `chunk_hash` |
 | `conversations` | Compound `(user_id, updated_at desc)` — what the sidebar query reads in one index hit |
 
 ### Pydantic + Beanie validators
@@ -549,11 +540,10 @@ Frontend can rely on consistent error shapes: every error response is
 | Change AI chat system prompt / persona | `utils/ai_utils.py → _build_chat_system()` |
 | Add a new AI provider | `utils/ai_utils.py` → add to `PROVIDERS` + write `_<provider>_chat()` + add a branch in `_dispatch()` |
 | Add available models for an existing provider | `utils/ai_utils.py → PROVIDERS[<id>]["models"]` |
-| Tune RAG retrieval | `config/settings.py → RAG_TOP_K, RAG_MIN_SIMILARITY, RAG_MMR_LAMBDA, RAG_MAX_CHUNK_CHARS, RAG_HISTORY_SCAN_LIMIT, RAG_MIN_QUERY_CHARS` (all overridable via `.env`) |
-| Add a new AI provider's transport | `utils/ai_utils.py → _<provider>_chat()` + branch in `_dispatch()` |
+| Tune RAG retrieval | `config/settings.py → RAG_KNOWLEDGE_TOP_K, RAG_MEMORY_TOP_K, RAG_CANDIDATE_POOL, RAG_RRF_K, RAG_MMR_LAMBDA, RAG_MEMORY_HALF_LIFE_DAYS, RAG_MEMORY_MAX_PER_USER, RAG_ROUTER_TIMEOUT_SECONDS, RAG_ROUTER_FALLBACK, RAG_MIN_QUERY_CHARS, RAG_MAX_CHUNK_CHARS` (all overridable via `.env`) — see [`docs/RAG.md`](./RAG.md#settings-reference) for the full table |
+| Add finance knowledge | (a) Add entries to `scripts/ingest_finance_docs.py → SEED` and re-run, OR (b) pass real `.txt` / `.md` paths: `python scripts/ingest_finance_docs.py docs/finance/` |
+| Swap embedding model | `config/settings.py → OLLAMA_EMBED_MODEL` **AND** `QDRANT_VECTOR_SIZE` (must match new model's dim). Drop + recreate Qdrant collections (`docker compose down -v qdrant && docker compose up -d qdrant`), then re-ingest. |
 | Lock down CORS / cookies for prod | `config/settings.py → APP_ENV=production` and `ALLOWED_ORIGINS=` (comma-separated) drive both. Cookies auto-flip to `secure=True, samesite=lax` when `app_env=production`. |
-| Add finance knowledge | `scripts/seed_knowledge.py → SEED` then re-run the script |
-| Swap embedding model | `config/settings.py → OLLAMA_EMBED_MODEL` (then re-seed) |
 | Add quiz questions for a user type | `frontend/src/components/pages/QuizPage.tsx → QUESTIONS` |
 | Add a new dashboard section | `frontend/src/components/pages/DashboardOverview.tsx` |
 | Add a sidebar nav item | `frontend/src/components/Sidebar.tsx → NAV` |
@@ -563,5 +553,6 @@ Frontend can rely on consistent error shapes: every error response is
 
 ---
 
-See [`API.md`](./API.md) for the full endpoint reference and
+See [`API.md`](./API.md) for the full endpoint reference,
+[`RAG.md`](./RAG.md) for the deep dive into the retrieval system, and
 [`TECH_STACK.md`](./TECH_STACK.md) for library justifications.
