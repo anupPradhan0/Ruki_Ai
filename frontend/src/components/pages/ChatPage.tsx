@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Link, useNavigate } from "@tanstack/react-router"
 import { Send, Loader2, Sparkles, Plus, KeyRound, Server, ArrowRight } from "lucide-react"
 import { api, session, type ChatTurn, type ConversationDetail, type UserType } from "@/lib/api"
+import MarkdownText from "@/components/MarkdownText"
 
 const VALID_TYPES: UserType[] = ["student", "employed", "unemployed", "retired"]
 
@@ -359,40 +360,13 @@ function Message({ role, content }: { role: "user" | "assistant"; content: strin
     )
   }
 
-  // Assistant — render basic markdown-ish structure.
   return (
     <div className="flex gap-3">
       <div className="w-7 h-7 rounded-lg bg-[#FFD700]/10 text-[#FFD700] flex items-center justify-center shrink-0">
         <Sparkles size={14} />
       </div>
       <div className="flex-1 text-sm text-white/85 leading-relaxed space-y-2">
-        {content.split("\n").map((raw, i) => {
-          const line = raw.trim()
-          if (!line) return <div key={i} className="h-1" />
-          if (line.startsWith("## ")) {
-            return (
-              <h3 key={i} className="text-[#FFD700] font-semibold text-sm mt-3">
-                {line.replace(/^##\s*/, "")}
-              </h3>
-            )
-          }
-          if (line.startsWith("# ")) {
-            return (
-              <h2 key={i} className="text-white font-semibold text-base mt-3">
-                {line.replace(/^#\s*/, "")}
-              </h2>
-            )
-          }
-          if (line.startsWith("• ") || line.startsWith("- ") || line.startsWith("* ")) {
-            return (
-              <div key={i} className="flex gap-2">
-                <span className="text-[#FFD700] shrink-0">•</span>
-                <span>{line.replace(/^[•\-*]\s*/, "")}</span>
-              </div>
-            )
-          }
-          return <p key={i}>{line}</p>
-        })}
+        <MarkdownText text={content} />
       </div>
     </div>
   )

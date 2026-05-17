@@ -30,6 +30,7 @@ import {
   type FinancialGoal,
   type CustomCategory,
 } from "@/lib/api"
+import MarkdownText from "@/components/MarkdownText"
 
 const VALID_TYPES: UserType[] = ["student", "employed", "unemployed", "retired"]
 
@@ -206,30 +207,10 @@ function titleCase(s: string | undefined | null): string {
 }
 
 function AIAdviceCard({ text, userType }: { text: string; userType: UserType }) {
-  const lines = text.split("\n")
   return (
     <Card title="AI Advice" icon={Sparkles}>
       <div className="space-y-2 text-sm text-white/80 leading-relaxed">
-        {lines.map((raw, i) => {
-          const line = raw.trim()
-          if (!line) return <div key={i} className="h-1" />
-          if (line.startsWith("## ")) {
-            return (
-              <h3 key={i} className="text-[#FFD700] font-semibold text-sm mt-3">
-                {line.replace(/^##\s*/, "")}
-              </h3>
-            )
-          }
-          if (line.startsWith("• ") || line.startsWith("- ")) {
-            return (
-              <div key={i} className="flex gap-2">
-                <span className="text-[#FFD700] shrink-0">•</span>
-                <span>{line.replace(/^[•\-]\s*/, "")}</span>
-              </div>
-            )
-          }
-          return <p key={i}>{line}</p>
-        })}
+        <MarkdownText text={text} />
       </div>
       <div className="mt-5 pt-4 border-t border-white/5 flex items-center justify-between gap-3 flex-wrap">
         <p className="text-[11px] text-white/40">

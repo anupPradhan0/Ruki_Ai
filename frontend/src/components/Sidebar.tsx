@@ -10,6 +10,17 @@ const NAV = [
   { to: "/dashboard/settings", label: "Settings", icon: Settings },
 ] as const
 
+function Logo({ onClick }: { onClick?: () => void }) {
+  return (
+    <Link to="/" onClick={onClick} className="flex items-center gap-2">
+      <span className="w-7 h-7 rounded-lg bg-[#FFD700] text-black flex items-center justify-center">
+        <Sparkles size={15} />
+      </span>
+      <span className="font-semibold tracking-tight text-sm">RukiAI</span>
+    </Link>
+  )
+}
+
 export default function Sidebar() {
   const routerState = useRouterState()
   const path = routerState.location.pathname
@@ -89,12 +100,7 @@ export default function Sidebar() {
     <>
       {/* Mobile top bar — visible below md */}
       <div className="md:hidden fixed top-0 inset-x-0 z-40 flex items-center justify-between bg-[#0F0F0F]/95 backdrop-blur border-b border-white/5 px-4 h-14">
-        <Link to="/" className="flex items-center gap-2">
-          <span className="w-7 h-7 rounded-lg bg-[#FFD700] text-black flex items-center justify-center">
-            <Sparkles size={15} />
-          </span>
-          <span className="font-semibold tracking-tight text-sm">RukiAI</span>
-        </Link>
+        <Logo />
         <button
           type="button"
           onClick={() => setMobileOpen(true)}
@@ -122,12 +128,7 @@ export default function Sidebar() {
           }`}
         >
           <div className="flex items-center justify-between p-5">
-            <Link to="/" className="flex items-center gap-2" onClick={() => setMobileOpen(false)}>
-              <span className="w-7 h-7 rounded-lg bg-[#FFD700] text-black flex items-center justify-center">
-                <Sparkles size={15} />
-              </span>
-              <span className="font-semibold tracking-tight">RukiAI</span>
-            </Link>
+            <Logo onClick={() => setMobileOpen(false)} />
             <button
               type="button"
               onClick={() => setMobileOpen(false)}
@@ -146,12 +147,7 @@ export default function Sidebar() {
       {/* Desktop sidebar — md and up */}
       <aside className="hidden md:flex w-60 shrink-0 flex-col bg-[#0F0F0F] border-r border-white/5 h-screen sticky top-0">
         <div className="p-5">
-          <Link to="/" className="flex items-center gap-2">
-            <span className="w-7 h-7 rounded-lg bg-[#FFD700] text-black flex items-center justify-center">
-              <Sparkles size={15} />
-            </span>
-            <span className="font-semibold tracking-tight">RukiAI</span>
-          </Link>
+          <Logo />
         </div>
         {navList}
         {conversations}
