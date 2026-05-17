@@ -9,6 +9,7 @@ from src.repositories.retired_repository import find_retired_by_user_id
 from src.repositories.user_repository import find_user_by_id
 from src.repositories import conversation_repository, chat_message_repository
 from src.services import conversation_service
+from src.services.memory_writer import persist_turn, schedule
 from src.utils.ai_utils import get_ai_chat_response, ai_settings_from_user
 
 
@@ -57,7 +58,7 @@ async def chat_with_ai(user_type: str, data: ChatRequest) -> ChatResponse:
         convo_id = convo.id
 
     # Persist the user's turn before calling the LLM so it is never lost.
-    await chat_message_repository.add_message(
+    user_msg = await chat_message_repository.add_message(
         user_id=user_id,
         conversation_id=convo_id,
         role="user",
@@ -70,11 +71,17 @@ async def chat_with_ai(user_type: str, data: ChatRequest) -> ChatResponse:
     # Exclude the just-saved user message — `get_ai_chat_response` takes `history` + new `message` separately.
     history = [{"role": m.role, "content": m.content} for m in recent[:-1]]
 
-    reply = await get_ai_chat_response(
-        profile, user_type, history, data.message, ai_settings, user_id=user_id
+    reply, query_vec = await get_ai_chat_response(
+        profile,
+        user_type,
+        history,
+        data.message,
+        ai_settings,
+        user_id=user_id,
+        conversation_id=convo_id,
     )
 
-    await chat_message_repository.add_message(
+    assistant_msg = await chat_message_repository.add_message(
         user_id=user_id,
         conversation_id=convo_id,
         role="assistant",
@@ -82,5 +89,26 @@ async def chat_with_ai(user_type: str, data: ChatRequest) -> ChatResponse:
         user_type=user_type,
     )
     await conversation_repository.touch(convo_id)
+
+    # Fire-and-forget Qdrant persistence. `schedule()` holds a strong ref so
+    # the task can't be GC'd mid-flight; each persist_turn back-fills its
+    # ChatMessage row's vector_id after a successful upsert.
+    schedule(persist_turn(
+        user_id=user_id,
+        role="user",
+        text=data.message,
+        user_type=user_type,
+        embedding=query_vec or None,
+        conversation_id=convo_id,
+        chat_message_id=user_msg.id,
+    ))
+    schedule(persist_turn(
+        user_id=user_id,
+        role="assistant",
+        text=reply,
+        user_type=user_type,
+        conversation_id=convo_id,
+        chat_message_id=assistant_msg.id,
+    ))
 
     return ChatResponse(reply=reply, conversation_id=str(convo_id))

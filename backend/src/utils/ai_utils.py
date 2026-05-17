@@ -1,15 +1,16 @@
+import asyncio
 from typing import Any, Optional
 import httpx
 from beanie import PydanticObjectId
 from src.config.settings import get_settings
 from src.utils.embed_utils import embed_text
-from src.utils.rag_utils import (
-    retrieve_relevant_chunks,
-    retrieve_relevant_history,
-    format_context,
-    format_history_context,
-    persist_chat_turn,
+from src.services.retrieval import (
+    retrieve_knowledge,
+    retrieve_memory,
+    format_knowledge,
+    format_memory,
 )
+from src.services.query_router import route_query
 
 
 PROVIDERS: dict = {
@@ -362,26 +363,33 @@ async def get_ai_advice(
     ai_settings: Optional[dict] = None,
     user_id: Optional[PydanticObjectId] = None,
 ) -> Optional[str]:
-    """One-shot financial advice. Pulls knowledge RAG + this user's past chat history.
+    """One-shot financial advice. Runs knowledge RAG + memory RAG in parallel.
 
-    Returns None if generation fails or returns empty text. Callers should treat
-    None as "no advice yet" — don't persist it as cached advice, since that would
-    mask future successful regenerations under the 7-day staleness window.
+    Returns None if generation fails or returns empty text. Callers should
+    treat None as "no advice yet" — don't persist it as cached advice, since
+    that would mask future successful regenerations under the staleness window.
     """
     settings = ai_settings or {"provider": "local", "model": "gemma4:e2b", "api_key": None}
     data = _extract_essential_fields(profile, user_type)
 
-    rag_query = f"financial advice for a {user_type} with profile {data}"
-    # Embed once, reuse for both retrieval calls (saves an Ollama round-trip).
+    # Compact RAG query — the profile dict was too noisy for cosine similarity.
+    # `goals` can be a string, list[str], or list[dict] depending on the user
+    # type's model — stringify safely either way.
+    goals_raw = data.get("goals") or ""
+    goals = (str(goals_raw) if not isinstance(goals_raw, str) else goals_raw)[:120]
+    rag_query = f"financial advice for {user_type}. Goals: {goals}".strip()
     query_vec = await embed_text(rag_query)
 
-    chunks = await retrieve_relevant_chunks(query_vec=query_vec, user_type=user_type)
-    context = format_context(chunks)
+    knowledge_task = retrieve_knowledge(rag_query, query_vec=query_vec, user_type=user_type)
+    memory_task = (
+        retrieve_memory(rag_query, query_vec=query_vec, user_id=str(user_id))
+        if user_id is not None and query_vec
+        else asyncio.sleep(0, result=[])
+    )
+    knowledge, memory = await asyncio.gather(knowledge_task, memory_task)
 
-    history_context = ""
-    if user_id is not None:
-        past = await retrieve_relevant_history(query_vec=query_vec, user_id=user_id)
-        history_context = format_history_context(past)
+    context = format_knowledge(knowledge)
+    history_context = format_memory(memory)
 
     prompt = _build_advice_prompt(user_type, data, context=context, history_context=history_context)
     messages = [{"role": "user", "content": prompt}]
@@ -400,31 +408,54 @@ async def get_ai_chat_response(
     message: str,
     ai_settings: Optional[dict] = None,
     user_id: Optional[PydanticObjectId] = None,
-) -> str:
-    """Conversational reply with profile + knowledge RAG + this user's history RAG.
+    conversation_id: Optional[PydanticObjectId] = None,
+) -> tuple[str, list[float]]:
+    """Conversational reply with profile + routed hybrid RAG.
 
-    Persists both the user message and assistant reply (with embeddings) so future
-    turns can retrieve them as user-data RAG context.
+    Returns `(reply, user_query_vector)`. The caller is responsible for
+    Mongo+Qdrant persistence of both turns — this function has no side effects
+    so the caller can pair Mongo IDs with the Qdrant upsert (needed for the
+    `vector_id` correlation column).
+
+    Flow:
+      1. Embed the user message once (reused for retrieval AND returned to caller).
+      2. Route the query (regex shortcut → optional LLM classifier).
+      3. Run the chosen pipeline(s) in parallel.
+      4. Build prompt, dispatch to provider.
     """
-    from src.config.settings import get_settings as _get_settings  # local import keeps top tidy
-    runtime_settings = _get_settings()
-
+    runtime_settings = get_settings()
     settings = ai_settings or {"provider": "local", "model": "gemma4:e2b", "api_key": None}
     data = _extract_essential_fields(profile, user_type)
 
-    # Embed the user message ONCE. Reused for: knowledge RAG, user-data RAG,
-    # and the eventual `persist_chat_turn` call. Saves up to 2 Ollama hops/turn.
     do_rag = bool(message) and len(message.strip()) >= runtime_settings.RAG_MIN_QUERY_CHARS
     query_vec: list[float] = await embed_text(message) if do_rag else []
 
     context = ""
     history_context = ""
     if query_vec:
-        chunks = await retrieve_relevant_chunks(query_vec=query_vec, user_type=user_type)
-        context = format_context(chunks)
-        if user_id is not None:
-            past = await retrieve_relevant_history(query_vec=query_vec, user_id=user_id)
-            history_context = format_history_context(past)
+        route = await route_query(message, settings)
+
+        wants_knowledge = route in ("KNOWLEDGE", "BOTH")
+        wants_memory = route in ("MEMORY", "BOTH") and user_id is not None
+
+        knowledge_task = (
+            retrieve_knowledge(message, query_vec=query_vec, user_type=user_type)
+            if wants_knowledge
+            else asyncio.sleep(0, result=[])
+        )
+        memory_task = (
+            retrieve_memory(
+                message,
+                query_vec=query_vec,
+                user_id=str(user_id),
+                exclude_conversation_id=str(conversation_id) if conversation_id else None,
+            )
+            if wants_memory
+            else asyncio.sleep(0, result=[])
+        )
+        knowledge, memory = await asyncio.gather(knowledge_task, memory_task)
+        context = format_knowledge(knowledge)
+        history_context = format_memory(memory)
 
     messages: list = [
         {
@@ -449,15 +480,4 @@ async def get_ai_chat_response(
         print(f"AI chat error ({settings.get('provider')}): {exc}")
         reply = "I'm having trouble responding right now. Please try again."
 
-    if user_id is not None:
-        try:
-            # Hand the precomputed user-message embedding to persist_chat_turn so it
-            # doesn't re-embed. Assistant reply still needs a fresh embed.
-            await persist_chat_turn(
-                user_id, "user", message, user_type, embedding=query_vec or None
-            )
-            await persist_chat_turn(user_id, "assistant", reply, user_type)
-        except Exception as exc:
-            print(f"Chat persistence error: {exc}")
-
-    return reply
+    return reply, query_vec
