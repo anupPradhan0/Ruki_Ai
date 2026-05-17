@@ -403,6 +403,12 @@ export interface DashboardResponse {
 
 // ── Endpoints ────────────────────────────────────────────────────────────
 
+const submitUserType = <T>(type: string, data: T) =>
+  request<{ message: string; user_type: string }>(`/userType/${type}`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  })
+
 export const api = {
   signup: (data: SignupPayload) =>
     request<AuthResponse>("/user/signup", {
@@ -419,29 +425,10 @@ export const api = {
   logout: () => request<{ message: string }>("/user/logout"),
   guest: () => request<AuthResponse>("/user/guest"),
 
-  submitStudent: (data: StudentForm) =>
-    request<{ message: string; user_type: string }>("/userType/student", {
-      method: "POST",
-      body: JSON.stringify(data),
-    }),
-
-  submitEmployed: (data: EmployedForm) =>
-    request<{ message: string; user_type: string }>("/userType/employed", {
-      method: "POST",
-      body: JSON.stringify(data),
-    }),
-
-  submitUnemployed: (data: UnemployedForm) =>
-    request<{ message: string; user_type: string }>("/userType/unemployed", {
-      method: "POST",
-      body: JSON.stringify(data),
-    }),
-
-  submitRetired: (data: RetiredForm) =>
-    request<{ message: string; user_type: string }>("/userType/retired", {
-      method: "POST",
-      body: JSON.stringify(data),
-    }),
+  submitStudent: (data: StudentForm) => submitUserType("student", data),
+  submitEmployed: (data: EmployedForm) => submitUserType("employed", data),
+  submitUnemployed: (data: UnemployedForm) => submitUserType("unemployed", data),
+  submitRetired: (data: RetiredForm) => submitUserType("retired", data),
 
   getDashboard: (type: UserType) =>
     request<DashboardResponse>(`/dashboard/${type}`),
