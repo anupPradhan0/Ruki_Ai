@@ -4,6 +4,8 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from src.config.settings import get_settings
 from src.db.database import init_db
+from src.services.qdrant_client import init_qdrant
+from src.services import bm25_index
 from src.routers.index_router import router as index_router
 from src.routers.auth_router import router as auth_router
 from src.routers.user_type_router import router as user_type_router
@@ -19,6 +21,8 @@ from src.routers.ai_settings_router import router as ai_settings_router
 async def lifespan(app: FastAPI):
     await init_db()
     print("✅ MongoDB connected via Beanie")
+    await init_qdrant()
+    await bm25_index.build()
     yield
     print("🔌 Shutting down")
 

@@ -71,7 +71,13 @@ async def chat_with_ai(user_type: str, data: ChatRequest) -> ChatResponse:
     history = [{"role": m.role, "content": m.content} for m in recent[:-1]]
 
     reply = await get_ai_chat_response(
-        profile, user_type, history, data.message, ai_settings, user_id=user_id
+        profile,
+        user_type,
+        history,
+        data.message,
+        ai_settings,
+        user_id=user_id,
+        conversation_id=convo_id,
     )
 
     await chat_message_repository.add_message(

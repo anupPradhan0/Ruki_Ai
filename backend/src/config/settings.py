@@ -10,17 +10,33 @@ class Settings(BaseSettings):
     OLLAMA_HOST: str = "http://localhost:11434"
     OLLAMA_MODEL: str = "gemma4:e2b"
     OLLAMA_EMBED_MODEL: str = "nomic-embed-text"
-    RAG_TOP_K: int = 3
-    # Cosine similarity below this is treated as "no useful match" — chunk dropped.
-    RAG_MIN_SIMILARITY: float = 0.30
-    # MMR tradeoff: 1.0 = pure relevance (top-k), 0.0 = pure diversity. 0.7 balances both.
-    RAG_MMR_LAMBDA: float = 0.7
-    # Cap each rendered chunk at this many chars in the prompt — keeps prompt budget tight.
-    RAG_MAX_CHUNK_CHARS: int = 500
-    # Don't scan more than this many of a user's chat messages per retrieval (recency-ordered).
-    RAG_HISTORY_SCAN_LIMIT: int = 500
-    # Skip RAG entirely for queries shorter than this many characters (greetings, "ok", etc.).
+
+    # Qdrant
+    QDRANT_URL: str = "http://qdrant:6333"
+    QDRANT_KNOWLEDGE_COLLECTION: str = "finance_knowledge"
+    QDRANT_MEMORY_COLLECTION: str = "user_chat_memory"
+    QDRANT_VECTOR_SIZE: int = 768  # nomic-embed-text dimensionality
+
+    # Retrieval
     RAG_MIN_QUERY_CHARS: int = 12
+    RAG_KNOWLEDGE_TOP_K: int = 5            # final chunks from KB pipeline
+    RAG_MEMORY_TOP_K: int = 3               # final chat turns from memory pipeline
+    RAG_CANDIDATE_POOL: int = 20            # per-leg candidates before RRF / MMR
+    RAG_RRF_K: int = 60                     # RRF constant — standard default
+    RAG_MMR_LAMBDA: float = 0.7             # 1.0 = pure relevance, 0.0 = pure diversity
+    RAG_MAX_CHUNK_CHARS: int = 500          # per-chunk truncation in the prompt
+    RAG_MEMORY_HALF_LIFE_DAYS: int = 30     # time-decay half-life for user memory
+    RAG_MEMORY_MAX_PER_USER: int = 10_000   # hard cap; oldest pruned beyond this
+    RAG_MEMORY_EXCLUDE_RECENT_SECONDS: int = 60  # don't retrieve the in-flight turn
+
+    # Query router
+    RAG_ROUTER_TIMEOUT_SECONDS: float = 4.0
+    RAG_ROUTER_FALLBACK: str = "BOTH"       # KNOWLEDGE | MEMORY | BOTH
+
+    # Ingestion
+    RAG_CHUNK_SIZE: int = 512
+    RAG_CHUNK_OVERLAP: int = 64
+    RAG_EMBED_CONCURRENCY: int = 4
     SMTP_HOST: str = "smtp.gmail.com"
     SMTP_PORT: int = 465
     SMTP_USER: str
