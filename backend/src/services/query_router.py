@@ -51,7 +51,8 @@ def _regex_route(query: str) -> Optional[str]:
 
 
 async def _llm_route(query: str, ai_settings: dict) -> str:
-    # Lazy import keeps a clean dep graph (query_router → ai_utils would be cyclic at import time).
+    # Lazy import — keeps `ai_utils` (which imports route_query at module load)
+    # from circling back through us before its own module finishes loading.
     from src.utils.ai_utils import _dispatch
 
     messages = [{"role": "user", "content": _ROUTER_PROMPT.format(query=query)}]

@@ -11,7 +11,6 @@ from src.services.retrieval import (
     format_memory,
 )
 from src.services.query_router import route_query
-from src.services.memory_writer import persist_turn
 
 
 PROVIDERS: dict = {
@@ -374,7 +373,10 @@ async def get_ai_advice(
     data = _extract_essential_fields(profile, user_type)
 
     # Compact RAG query — the profile dict was too noisy for cosine similarity.
-    goals = (data.get("goals") or "")[:120]
+    # `goals` can be a string, list[str], or list[dict] depending on the user
+    # type's model — stringify safely either way.
+    goals_raw = data.get("goals") or ""
+    goals = (str(goals_raw) if not isinstance(goals_raw, str) else goals_raw)[:120]
     rag_query = f"financial advice for {user_type}. Goals: {goals}".strip()
     query_vec = await embed_text(rag_query)
 
@@ -407,15 +409,19 @@ async def get_ai_chat_response(
     ai_settings: Optional[dict] = None,
     user_id: Optional[PydanticObjectId] = None,
     conversation_id: Optional[PydanticObjectId] = None,
-) -> str:
+) -> tuple[str, list[float]]:
     """Conversational reply with profile + routed hybrid RAG.
 
+    Returns `(reply, user_query_vector)`. The caller is responsible for
+    Mongo+Qdrant persistence of both turns — this function has no side effects
+    so the caller can pair Mongo IDs with the Qdrant upsert (needed for the
+    `vector_id` correlation column).
+
     Flow:
-      1. Embed the user message once (reused for retrieval AND persistence).
+      1. Embed the user message once (reused for retrieval AND returned to caller).
       2. Route the query (regex shortcut → optional LLM classifier).
       3. Run the chosen pipeline(s) in parallel.
       4. Build prompt, dispatch to provider.
-      5. Persist both turns into Mongo + Qdrant in the background.
     """
     runtime_settings = get_settings()
     settings = ai_settings or {"provider": "local", "model": "gemma4:e2b", "api_key": None}
@@ -438,7 +444,12 @@ async def get_ai_chat_response(
             else asyncio.sleep(0, result=[])
         )
         memory_task = (
-            retrieve_memory(message, query_vec=query_vec, user_id=str(user_id))
+            retrieve_memory(
+                message,
+                query_vec=query_vec,
+                user_id=str(user_id),
+                exclude_conversation_id=str(conversation_id) if conversation_id else None,
+            )
             if wants_memory
             else asyncio.sleep(0, result=[])
         )
@@ -469,21 +480,4 @@ async def get_ai_chat_response(
         print(f"AI chat error ({settings.get('provider')}): {exc}")
         reply = "I'm having trouble responding right now. Please try again."
 
-    if user_id is not None:
-        # Fire-and-forget — never block the reply on Qdrant.
-        async def _persist_both():
-            try:
-                await persist_turn(
-                    user_id, "user", message, user_type,
-                    embedding=query_vec or None, conversation_id=conversation_id,
-                )
-                await persist_turn(
-                    user_id, "assistant", reply, user_type,
-                    conversation_id=conversation_id,
-                )
-            except Exception as exc:
-                print(f"Chat persistence error: {exc}")
-
-        asyncio.create_task(_persist_both())
-
-    return reply
+    return reply, query_vec

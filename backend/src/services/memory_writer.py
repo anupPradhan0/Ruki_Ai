@@ -18,8 +18,21 @@ from qdrant_client.models import (
 )
 
 from src.config.settings import get_settings
+from src.models.chat_message_model import ChatMessage
 from src.services.qdrant_client import get_qdrant
 from src.utils.embed_utils import embed_text
+
+# Holds strong references to fire-and-forget background tasks so the event
+# loop doesn't GC them mid-flight (Python 3.11+ keeps only weak refs).
+_pending_tasks: set = set()
+
+
+def schedule(coro) -> None:
+    """Schedule a coroutine in the background with a held reference."""
+    import asyncio
+    task = asyncio.create_task(coro)
+    _pending_tasks.add(task)
+    task.add_done_callback(_pending_tasks.discard)
 
 
 async def persist_turn(
@@ -29,12 +42,16 @@ async def persist_turn(
     user_type: Optional[str] = None,
     embedding: Optional[list[float]] = None,
     conversation_id: Optional[PydanticObjectId] = None,
+    chat_message_id: Optional[PydanticObjectId] = None,
 ) -> Optional[str]:
     """Embed (if needed) and upsert a single chat turn into Qdrant.
 
-    Pass `embedding` when the same text was just embedded for retrieval — saves
-    one Ollama round-trip per turn. Returns the Qdrant point ID, or None on
-    any failure (silent — caller doesn't need to handle, Mongo still has the turn).
+    If `chat_message_id` is given, the matching Mongo `ChatMessage` row is
+    updated with `vector_id` after a successful upsert — this lets us correlate
+    a Qdrant point back to its source row (used by future cleanup / GDPR delete).
+
+    Returns the Qdrant point ID, or None on any failure (silent — Mongo is the
+    source of truth so a Qdrant outage never loses a turn).
     """
     if not text:
         return None
@@ -44,8 +61,22 @@ async def persist_turn(
     if not vector:
         return None
 
+    # Generate the UUID up front so we can write it to Mongo *before* the
+    # Qdrant upsert. If the upsert fails, Mongo still has a vector_id pointing
+    # at a non-existent point — but that's a no-op for retrieval (we never
+    # look up by vector_id at read time) and the next migration/eval can
+    # detect the orphan. The opposite ordering (Qdrant first, Mongo second)
+    # creates orphan Qdrant points if Mongo update fails on retry — worse.
     point_id = str(uuid4())
     now_iso = datetime.now(timezone.utc).isoformat()
+
+    if chat_message_id is not None:
+        try:
+            await ChatMessage.find_one(ChatMessage.id == chat_message_id).update(
+                {"$set": {"vector_id": point_id}}
+            )
+        except Exception as exc:
+            print(f"vector_id backfill failed (continuing): {exc}")
 
     try:
         await get_qdrant().upsert(
@@ -80,7 +111,11 @@ async def persist_turn(
 
 
 async def _prune_if_needed(user_id: str) -> None:
-    """If this user is over the cap, delete the oldest 5% of their points."""
+    """If this user is over the cap, delete the oldest ~5% of their points.
+
+    Caps the scroll to a multiple of the prune size so that a user already
+    way over the cap doesn't make us scroll their entire history every turn.
+    """
     s = get_settings()
     client = get_qdrant()
     qfilter = Filter(must=[FieldCondition(key="user_id", match=MatchValue(value=user_id))])
@@ -93,9 +128,13 @@ async def _prune_if_needed(user_id: str) -> None:
         return
 
     to_drop = max(1, int(cap * 0.05))
+    # Look at at most ~10× the prune target — plenty of oldest candidates,
+    # but bounded so we don't scroll all 10k+ points on every chat turn.
+    scan_budget = to_drop * 10
+
     points: list[tuple[str, str]] = []
     next_offset = None
-    while True:
+    while len(points) < scan_budget:
         batch, next_offset = await client.scroll(
             collection_name=s.QDRANT_MEMORY_COLLECTION,
             scroll_filter=qfilter,
@@ -107,7 +146,7 @@ async def _prune_if_needed(user_id: str) -> None:
         for pt in batch:
             payload = pt.payload or {}
             points.append((str(pt.id), payload.get("created_at") or ""))
-        if next_offset is None:
+        if next_offset is None or not batch:
             break
 
     points.sort(key=lambda x: x[1])  # oldest first

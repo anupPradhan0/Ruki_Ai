@@ -8,12 +8,32 @@ from datetime import datetime, timezone
 from math import pow
 from typing import Optional
 
-from qdrant_client.models import FieldCondition, Filter, MatchValue
+from qdrant_client.models import (
+    FieldCondition,
+    Filter,
+    IsEmptyCondition,
+    MatchValue,
+    PayloadField,
+)
 
 from src.config.settings import get_settings
 from src.services import bm25_index
 from src.services.qdrant_client import get_qdrant
 from src.utils.embed_utils import cosine_similarity
+
+
+def _as_vector(raw) -> Optional[list[float]]:
+    """Qdrant returns `.vector` as list (unnamed vectors) OR dict (named).
+    Our collections use unnamed vectors, but be defensive — version skew has
+    bitten this before."""
+    if raw is None:
+        return None
+    if isinstance(raw, list):
+        return raw
+    if isinstance(raw, dict):
+        # Unnamed vector lives under the empty-string key.
+        return raw.get("") or next(iter(raw.values()), None)
+    return None
 
 
 # ── MMR (Maximal Marginal Relevance) ───────────────────────────────────────
@@ -91,10 +111,14 @@ async def retrieve_knowledge(
     # (matches the user's bucket OR universal chunks with user_type=None).
     qfilter = None
     if user_type:
+        # "this user's bucket" OR "universal" (user_type is null / missing).
+        # `IsEmptyCondition` matches null, missing field, and empty array — which
+        # is the only correct way to find the None-tagged universal chunks
+        # (Qdrant's MatchValue rejects None).
         qfilter = Filter(
             should=[
                 FieldCondition(key="user_type", match=MatchValue(value=user_type)),
-                FieldCondition(key="user_type", match=MatchValue(value=None)),
+                IsEmptyCondition(is_empty=PayloadField(key="user_type")),
             ]
         )
 
@@ -138,17 +162,21 @@ async def retrieve_knowledge(
         except Exception as exc:
             print(f"Qdrant retrieve for BM25 winners failed: {exc}")
 
-    # Score MMR candidates by cosine to the query (RRF score is rank-only, not
-    # cosine; recompute against the query vector for the MMR relevance term).
+    # IMPORTANT: keep RRF order — do NOT re-sort by cosine. A BM25-only winner
+    # may have a weak vector-cosine score; sorting by cosine would push it to
+    # the back and MMR's seed (pool.pop(0)) would skip it. By preserving the
+    # RRF ranking, MMR seeds with the actual top hybrid hit, then diversifies
+    # the rest using the cosine term against the picked set.
     mmr_candidates: list[tuple[float, dict, list[float]]] = []
-    for cid, _rrf_score in merged:
+    for cid, rrf_score in merged:
         pt = vector_by_id.get(cid)
-        if pt is None or pt.payload is None or pt.vector is None:
+        if pt is None or pt.payload is None:
             continue
-        sim = cosine_similarity(query_vec, pt.vector)
-        mmr_candidates.append((sim, pt.payload, pt.vector))
+        vec = _as_vector(pt.vector)
+        if vec is None:
+            continue
+        mmr_candidates.append((rrf_score, pt.payload, vec))
 
-    mmr_candidates.sort(key=lambda t: t[0], reverse=True)
     chosen = _mmr_select(mmr_candidates, k=s.RAG_KNOWLEDGE_TOP_K, lambda_=s.RAG_MMR_LAMBDA)
     return [payload for _, payload in chosen]
 
@@ -171,14 +199,29 @@ async def retrieve_memory(
     query: str,
     query_vec: Optional[list[float]],
     user_id: str,
+    exclude_conversation_id: Optional[str] = None,
 ) -> list[dict]:
-    """Per-user vector search with time-decay reweighting and MMR re-rank."""
+    """Per-user vector search with time-decay reweighting and MMR re-rank.
+
+    `exclude_conversation_id`: if given, the current conversation's turns are
+    filtered out so the model isn't fed back the just-said messages as
+    "relevant memory" — that produced awkward "you said earlier:" loops.
+    """
     s = get_settings()
     if not query or not query_vec or not user_id:
         return []
 
+    must_not = []
+    if exclude_conversation_id:
+        must_not.append(
+            FieldCondition(
+                key="conversation_id",
+                match=MatchValue(value=exclude_conversation_id),
+            )
+        )
     qfilter = Filter(
-        must=[FieldCondition(key="user_id", match=MatchValue(value=user_id))]
+        must=[FieldCondition(key="user_id", match=MatchValue(value=user_id))],
+        must_not=must_not or None,
     )
 
     try:
@@ -213,9 +256,10 @@ async def retrieve_memory(
                 pass
         weight = _time_decay(created, s.RAG_MEMORY_HALF_LIFE_DAYS) if created else 1.0
         score = (h.score or 0.0) * weight
-        if h.vector is None:
+        vec = _as_vector(h.vector)
+        if vec is None:
             continue
-        decayed.append((score, payload, h.vector))
+        decayed.append((score, payload, vec))
 
     decayed.sort(key=lambda t: t[0], reverse=True)
     chosen = _mmr_select(decayed, k=s.RAG_MEMORY_TOP_K, lambda_=s.RAG_MMR_LAMBDA)

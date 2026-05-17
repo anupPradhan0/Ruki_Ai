@@ -29,12 +29,22 @@ def _hash(source: str, text: str) -> str:
     return sha256(f"{source}::{text}".encode("utf-8")).hexdigest()
 
 
+async def _flush_knowledge_batch(client, coll, points, updates, collection_name) -> None:
+    """Write Mongo `vector_id` BEFORE the Qdrant upsert. If the upsert fails
+    on retry, the next run will see the same vector_id in Mongo and skip the
+    row — preventing orphan Qdrant points from accumulating."""
+    if not points:
+        return
+    for _id, upd in updates:
+        await coll.update_one({"_id": _import_objectid(_id)}, {"$set": upd})
+    await client.upsert(collection_name=collection_name, points=points)
+
+
 async def _migrate_knowledge() -> None:
     s = get_settings()
     client = get_qdrant()
-
-    # Use raw motor collection so we can read the legacy `embedding` field that
-    # is no longer on the Beanie model.
+    # Use the raw motor collection so we can read the legacy `embedding` field
+    # that's no longer on the Beanie model.
     coll = KnowledgeChunk.get_motor_collection()
     cursor = coll.find({})
     total = migrated = skipped = 0
@@ -51,7 +61,9 @@ async def _migrate_knowledge() -> None:
             skipped += 1
             continue
         vector_id = str(uuid4())
-        chunk_hash = row.get("chunk_hash") or _hash(row.get("source") or "legacy", row.get("content") or "")
+        chunk_hash = row.get("chunk_hash") or _hash(
+            row.get("source") or "legacy", row.get("content") or ""
+        )
         points.append(PointStruct(
             id=vector_id,
             vector=vec,
@@ -67,15 +79,22 @@ async def _migrate_knowledge() -> None:
         ))
         updates.append((str(row["_id"]), {"vector_id": vector_id, "chunk_hash": chunk_hash}))
         migrated += 1
+        if len(points) >= 256:
+            await _flush_knowledge_batch(client, coll, points, updates, s.QDRANT_KNOWLEDGE_COLLECTION)
+            points.clear()
+            updates.clear()
 
-    if points:
-        await client.upsert(collection_name=s.QDRANT_KNOWLEDGE_COLLECTION, points=points)
-        for _id, upd in updates:
-            await coll.update_one({"_id": _import_objectid(_id)}, {"$set": upd})
-
-    # Drop the legacy embedding field across the board.
+    await _flush_knowledge_batch(client, coll, points, updates, s.QDRANT_KNOWLEDGE_COLLECTION)
     await coll.update_many({"embedding": {"$exists": True}}, {"$unset": {"embedding": ""}})
     print(f"  knowledge: {migrated} migrated, {skipped} skipped, {total} total")
+
+
+async def _flush_memory_batch(client, coll, points, updates, collection_name) -> None:
+    if not points:
+        return
+    for _id, vid in updates:
+        await coll.update_one({"_id": _import_objectid(_id)}, {"$set": {"vector_id": vid}})
+    await client.upsert(collection_name=collection_name, points=points)
 
 
 async def _migrate_memory() -> None:
@@ -96,11 +115,17 @@ async def _migrate_memory() -> None:
         if not vec:
             skipped += 1
             continue
-        vector_id = str(uuid4())
         created = row.get("created_at")
-        if created and created.tzinfo is None:
+        if created is None:
+            # Qdrant's datetime payload index will reject an empty string and
+            # could fail the whole batch — fall back to "now" so the point
+            # still indexes (decay will treat it as fresh, which is fine for
+            # an unknown timestamp).
+            created = datetime.now(timezone.utc)
+        elif created.tzinfo is None:
             created = created.replace(tzinfo=timezone.utc)
-        created_iso = created.isoformat() if created else ""
+        created_iso = created.isoformat()
+        vector_id = str(uuid4())
         points.append(PointStruct(
             id=vector_id,
             vector=vec,
@@ -116,20 +141,12 @@ async def _migrate_memory() -> None:
         ))
         updates.append((str(row["_id"]), vector_id))
         migrated += 1
-
-        # Flush in chunks to avoid one giant Qdrant request.
         if len(points) >= 256:
-            await client.upsert(collection_name=s.QDRANT_MEMORY_COLLECTION, points=points)
-            for _id, vid in updates:
-                await coll.update_one({"_id": _import_objectid(_id)}, {"$set": {"vector_id": vid}})
+            await _flush_memory_batch(client, coll, points, updates, s.QDRANT_MEMORY_COLLECTION)
             points.clear()
             updates.clear()
 
-    if points:
-        await client.upsert(collection_name=s.QDRANT_MEMORY_COLLECTION, points=points)
-        for _id, vid in updates:
-            await coll.update_one({"_id": _import_objectid(_id)}, {"$set": {"vector_id": vid}})
-
+    await _flush_memory_batch(client, coll, points, updates, s.QDRANT_MEMORY_COLLECTION)
     await coll.update_many({"embedding": {"$exists": True}}, {"$unset": {"embedding": ""}})
     print(f"  memory: {migrated} migrated, {skipped} skipped, {total} total")
 
