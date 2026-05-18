@@ -4,6 +4,8 @@ import { Link, useNavigate } from "@tanstack/react-router"
 import { Send, Loader2, Sparkles, Plus, KeyRound, Server, ArrowRight } from "lucide-react"
 import { api, session, type ChatTurn, type ConversationDetail, type UserType } from "@/lib/api"
 import MarkdownText from "@/components/MarkdownText"
+import { ChatHistorySkeleton } from "@/components/Skeleton"
+import { toastError } from "@/lib/toast"
 
 const VALID_TYPES: UserType[] = ["student", "employed", "unemployed", "retired"]
 
@@ -179,8 +181,9 @@ export default function ChatPage({ conversationId }: ChatPageProps = {}) {
         )
       }
     },
-    onError: () => {
+    onError: (err) => {
       setStreaming(false)
+      toastError(err, "Chat failed — please try again")
       // Drop the empty assistant placeholder and the user message we pushed.
       setMessages((prev) => {
         if (prev.length >= 2 && prev[prev.length - 1].role === "assistant" && prev[prev.length - 2].role === "user") {
@@ -215,7 +218,7 @@ export default function ChatPage({ conversationId }: ChatPageProps = {}) {
         onChange={(e) => setInput(e.target.value)}
         onKeyDown={handleKey}
         placeholder={messages.length > 0 ? "Reply..." : "Ask about your finances, budgeting, goals..."}
-        className="bg-transparent resize-none outline-none text-sm text-white placeholder-white/30 leading-relaxed max-h-56 w-full"
+        className="bg-transparent resize-none outline-none text-base sm:text-sm text-white placeholder-white/30 leading-relaxed max-h-56 w-full"
         style={{ minHeight: "44px" }}
       />
       <div className="flex items-center justify-between mt-2">
@@ -254,7 +257,7 @@ export default function ChatPage({ conversationId }: ChatPageProps = {}) {
   // flashing the empty state and then swapping it for the gate.
   if (aiSettingsQuery.isLoading) {
     return (
-      <div className="flex flex-col h-[calc(100vh-3.5rem)] md:h-screen items-center justify-center">
+      <div className="flex flex-col h-[calc(100dvh-3.5rem)] md:h-dvh items-center justify-center">
         <Loader2 className="text-white/40 animate-spin" size={24} />
       </div>
     )
@@ -264,11 +267,13 @@ export default function ChatPage({ conversationId }: ChatPageProps = {}) {
     return <CloudSetupGate provider={provider} hasApiKey={hasApiKey} />
   }
 
-  // Show a spinner while loading an existing conversation's history.
+  // Skeleton mimicking a few message bubbles while history loads.
   if (conversationId && conversationQuery.isLoading) {
     return (
-      <div className="flex flex-col h-[calc(100vh-3.5rem)] md:h-screen items-center justify-center">
-        <Loader2 className="text-white/40 animate-spin" size={24} />
+      <div className="flex flex-col h-[calc(100dvh-3.5rem)] md:h-dvh">
+        <div className="flex-1 overflow-y-auto">
+          <ChatHistorySkeleton />
+        </div>
       </div>
     )
   }
@@ -278,7 +283,7 @@ export default function ChatPage({ conversationId }: ChatPageProps = {}) {
   // Empty state — centered greeting + composer (Gemini/Claude style).
   if (isEmpty) {
     return (
-      <div className="flex flex-col h-[calc(100vh-3.5rem)] md:h-screen items-center justify-center px-4 sm:px-6">
+      <div className="flex flex-col h-[calc(100dvh-3.5rem)] md:h-dvh items-center justify-center px-4 sm:px-6">
         <div className="w-full max-w-2xl">
           <EmptyState />
           {composer}
@@ -290,7 +295,7 @@ export default function ChatPage({ conversationId }: ChatPageProps = {}) {
 
   // Active conversation — composer pinned to the bottom.
   return (
-    <div className="flex flex-col h-[calc(100vh-3.5rem)] md:h-screen">
+    <div className="flex flex-col h-[calc(100dvh-3.5rem)] md:h-dvh">
       <div ref={scrollRef} className="flex-1 overflow-y-auto">
         <div className="max-w-3xl mx-auto px-4 sm:px-6 py-6 sm:py-8 space-y-6">
           {messages.map((m, i) => (
@@ -328,7 +333,7 @@ function CloudSetupGate({
         : "Pick a cloud provider and add an API key to start chatting."
 
   return (
-    <div className="flex flex-col h-[calc(100vh-3.5rem)] md:h-screen items-center justify-center px-4 sm:px-6">
+    <div className="flex flex-col h-[calc(100dvh-3.5rem)] md:h-dvh items-center justify-center px-4 sm:px-6">
       <div className="w-full max-w-lg">
         <div className="bg-[#1A1A1A] rounded-2xl border border-white/10 p-6 sm:p-8">
           <div className="w-12 h-12 rounded-2xl bg-[#FFD700]/10 flex items-center justify-center mb-5">

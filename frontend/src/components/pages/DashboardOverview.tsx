@@ -31,6 +31,7 @@ import {
   type CustomCategory,
 } from "@/lib/api"
 import MarkdownText from "@/components/MarkdownText"
+import { toastError } from "@/lib/toast"
 
 const VALID_TYPES: UserType[] = ["student", "employed", "unemployed", "retired"]
 
@@ -90,6 +91,7 @@ function useRegenerateAdvice(userType: UserType) {
     onSuccess: (fresh) => {
       qc.setQueryData(["dashboard", userType], fresh)
     },
+    onError: (err) => toastError(err, "Couldn't regenerate advice"),
   })
 }
 

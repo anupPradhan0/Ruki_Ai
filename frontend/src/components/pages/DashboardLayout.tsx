@@ -1,9 +1,11 @@
 import { useEffect, useMemo } from "react"
 import { Outlet, useNavigate, useRouterState } from "@tanstack/react-router"
 import { useQuery } from "@tanstack/react-query"
-import { Loader2, AlertCircle } from "lucide-react"
+import { AlertCircle } from "lucide-react"
 import Sidebar from "@/components/Sidebar"
+import { DashboardSkeleton } from "@/components/Skeleton"
 import { api, session, type UserType } from "@/lib/api"
+import { toast } from "@/lib/toast"
 
 const VALID_TYPES: UserType[] = ["student", "employed", "unemployed", "retired"]
 
@@ -43,6 +45,12 @@ export default function DashboardLayout() {
     }
   }, [dashQuery.data, navigate, isPublicPath])
 
+  useEffect(() => {
+    if (dashQuery.isError && !isPublicPath) {
+      toast.error((dashQuery.error as Error)?.message ?? "Couldn't load your dashboard")
+    }
+  }, [dashQuery.isError, dashQuery.error, isPublicPath])
+
   const canRenderOutlet =
     isPublicPath ||
     (dashQuery.data && !dashQuery.data.needs_onboarding && dashQuery.data.quiz_completed)
@@ -52,9 +60,7 @@ export default function DashboardLayout() {
       <Sidebar />
       <main className="flex-1 min-w-0 pt-14 md:pt-0">
         {dashQuery.isLoading && !isPublicPath ? (
-          <div className="flex items-center justify-center h-screen">
-            <Loader2 className="text-white/40 animate-spin" size={28} />
-          </div>
+          <DashboardSkeleton />
         ) : dashQuery.isError && !isPublicPath ? (
           <div className="max-w-xl mx-auto py-20 px-4">
             <div className="bg-red-500/5 border border-red-500/30 rounded-xl p-6 text-red-400 text-sm flex items-start gap-3">

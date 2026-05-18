@@ -48,6 +48,15 @@
     animation: fadeInUp 0.7s ease-out both;
   }
 
+  @keyframes toastIn {
+    from { opacity: 0; transform: translateY(12px) scale(0.98); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
+  }
+
+  .animate-toast-in {
+    animation: toastIn 0.18s ease-out both;
+  }
+
   .nav-underline {
     position: relative;
   }

@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useNavigate, useRouterState } from "@tanstack/react-router"
-import { MessageSquarePlus, MoreHorizontal, Pencil, Trash2, MessageSquare, Loader2 } from "lucide-react"
+import { MessageSquarePlus, MoreHorizontal, Pencil, Trash2, MessageSquare } from "lucide-react"
 import { api, type ConversationSummary } from "@/lib/api"
+import { ConversationListSkeleton } from "@/components/Skeleton"
+import { toastError } from "@/lib/toast"
 
 export default function ConversationList() {
   const navigate = useNavigate()
@@ -25,6 +27,7 @@ export default function ConversationList() {
   const renameMutation = useMutation({
     mutationFn: ({ id, title }: { id: string; title: string }) => api.renameConversation(id, title),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["conversations"] }),
+    onError: (err) => toastError(err, "Couldn't rename conversation"),
   })
 
   const deleteMutation = useMutation({
@@ -34,6 +37,7 @@ export default function ConversationList() {
       queryClient.removeQueries({ queryKey: ["conversation", id] })
       if (activeId === id) navigate({ to: "/dashboard/chat" })
     },
+    onError: (err) => toastError(err, "Couldn't delete conversation"),
   })
 
   const handleNewChat = () => {
@@ -56,11 +60,7 @@ export default function ConversationList() {
       </div>
 
       <div className="flex-1 min-h-0 overflow-y-auto -mr-1 pr-1 space-y-0.5">
-        {isLoading && (
-          <div className="flex justify-center py-4 text-white/30">
-            <Loader2 size={14} className="animate-spin" />
-          </div>
-        )}
+        {isLoading && <ConversationListSkeleton />}
 
         {isError && (
           <p className="text-[11px] text-red-400/70 px-2">Couldn't load history.</p>
