@@ -17,6 +17,16 @@ class User(Document):
     ai_provider: str = "local"
     ai_model: str = "gemma4:e2b"
     ai_api_key: Optional[str] = None
+
+    # Email verification + session invalidation
+    email_verified: bool = False
+    email_verified_at: Optional[datetime] = None
+    # Bumped on logout-all / password change / reset. JWTs carry the value
+    # they were issued under; a mismatch invalidates the token at the
+    # middleware layer.
+    token_version: int = 0
+    password_changed_at: Optional[datetime] = None
+
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 

@@ -47,6 +47,8 @@ class Settings(BaseSettings):
     # Comma-separated list of allowed CORS origins for production.
     # When empty, falls back to a permissive localhost regex (dev only).
     ALLOWED_ORIGINS: str = ""
+    # Public URL of the frontend, used to build email verification / password reset links.
+    FRONTEND_URL: str = "http://localhost:5173"
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 

@@ -1,5 +1,4 @@
 import time
-from typing import Optional
 from fastapi import HTTPException
 from src.schemas.auth_schemas import SignupRequest, LoginRequest
 from src.repositories.user_repository import find_user_by_email, create_user
@@ -8,10 +7,11 @@ from src.models.user_model import User
 from src.models.guest_model import Guest
 from src.utils.password_utils import hash_password, verify_password
 from src.utils.jwt_utils import create_token
+from src.services.password_service import issue_email_verification
 
 
 async def register_user(data: SignupRequest) -> tuple[User, str]:
-    """Hash password, persist new User, return (user, jwt_token)."""
+    """Hash password, persist new User, send verification email, return (user, jwt_token)."""
     existing = await find_user_by_email(data.email)
     if existing:
         raise HTTPException(status_code=400, detail="Email already registered")
@@ -25,7 +25,14 @@ async def register_user(data: SignupRequest) -> tuple[User, str]:
         currency=data.currency,
         user_type=data.user_type,
     )
-    token = create_token(str(user.id))
+
+    # Verification email is best-effort — failures here shouldn't block signup.
+    try:
+        await issue_email_verification(user)
+    except Exception as exc:
+        print(f"Could not send verification email: {exc}")
+
+    token = create_token(str(user.id), token_version=user.token_version)
     return user, token
 
 
@@ -35,7 +42,7 @@ async def login_user(data: LoginRequest) -> tuple[User, str]:
     if not user or not verify_password(data.password, user.hashed_password):
         raise HTTPException(status_code=401, detail="Invalid email or password")
 
-    token = create_token(str(user.id))
+    token = create_token(str(user.id), token_version=user.token_version)
     return user, token
 
 

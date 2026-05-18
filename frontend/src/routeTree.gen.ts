@@ -23,6 +23,9 @@ import { Route as AuthSignupRouteImport } from './routes/_auth/signup'
 import { Route as AuthQuizRouteImport } from './routes/_auth/quiz'
 import { Route as AuthOnboardingRouteImport } from './routes/_auth/onboarding'
 import { Route as AuthLoginRouteImport } from './routes/_auth/login'
+import { Route as AuthForgotPasswordRouteImport } from './routes/_auth/forgot-password'
+import { Route as AuthResetPasswordRouteImport } from './routes/_auth/reset-password'
+import { Route as AuthVerifyEmailRouteImport } from './routes/_auth/verify-email'
 import { Route as DashboardChatIndexRouteImport } from './routes/dashboard/chat.index'
 import { Route as DashboardChatConversationIdRouteImport } from './routes/dashboard/chat.$conversationId'
 
@@ -94,6 +97,21 @@ const AuthLoginRoute = AuthLoginRouteImport.update({
   path: '/login',
   getParentRoute: () => AuthRoute,
 } as any)
+const AuthForgotPasswordRoute = AuthForgotPasswordRouteImport.update({
+  id: '/forgot-password',
+  path: '/forgot-password',
+  getParentRoute: () => AuthRoute,
+} as any)
+const AuthResetPasswordRoute = AuthResetPasswordRouteImport.update({
+  id: '/reset-password',
+  path: '/reset-password',
+  getParentRoute: () => AuthRoute,
+} as any)
+const AuthVerifyEmailRoute = AuthVerifyEmailRouteImport.update({
+  id: '/verify-email',
+  path: '/verify-email',
+  getParentRoute: () => AuthRoute,
+} as any)
 const DashboardChatIndexRoute = DashboardChatIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -113,6 +131,9 @@ export interface FileRoutesByFullPath {
   '/onboarding': typeof AuthOnboardingRoute
   '/quiz': typeof AuthQuizRoute
   '/signup': typeof AuthSignupRoute
+  '/forgot-password': typeof AuthForgotPasswordRoute
+  '/reset-password': typeof AuthResetPasswordRoute
+  '/verify-email': typeof AuthVerifyEmailRoute
   '/about': typeof LayoutAboutRoute
   '/features': typeof LayoutFeaturesRoute
   '/how-it-works': typeof LayoutHowItWorksRoute
@@ -128,6 +149,9 @@ export interface FileRoutesByTo {
   '/onboarding': typeof AuthOnboardingRoute
   '/quiz': typeof AuthQuizRoute
   '/signup': typeof AuthSignupRoute
+  '/forgot-password': typeof AuthForgotPasswordRoute
+  '/reset-password': typeof AuthResetPasswordRoute
+  '/verify-email': typeof AuthVerifyEmailRoute
   '/about': typeof LayoutAboutRoute
   '/features': typeof LayoutFeaturesRoute
   '/how-it-works': typeof LayoutHowItWorksRoute
@@ -145,6 +169,9 @@ export interface FileRoutesById {
   '/_auth/onboarding': typeof AuthOnboardingRoute
   '/_auth/quiz': typeof AuthQuizRoute
   '/_auth/signup': typeof AuthSignupRoute
+  '/_auth/forgot-password': typeof AuthForgotPasswordRoute
+  '/_auth/reset-password': typeof AuthResetPasswordRoute
+  '/_auth/verify-email': typeof AuthVerifyEmailRoute
   '/_layout/about': typeof LayoutAboutRoute
   '/_layout/features': typeof LayoutFeaturesRoute
   '/_layout/how-it-works': typeof LayoutHowItWorksRoute
@@ -164,6 +191,9 @@ export interface FileRouteTypes {
     | '/onboarding'
     | '/quiz'
     | '/signup'
+    | '/forgot-password'
+    | '/reset-password'
+    | '/verify-email'
     | '/about'
     | '/features'
     | '/how-it-works'
@@ -179,6 +209,9 @@ export interface FileRouteTypes {
     | '/onboarding'
     | '/quiz'
     | '/signup'
+    | '/forgot-password'
+    | '/reset-password'
+    | '/verify-email'
     | '/about'
     | '/features'
     | '/how-it-works'
@@ -195,6 +228,9 @@ export interface FileRouteTypes {
     | '/_auth/onboarding'
     | '/_auth/quiz'
     | '/_auth/signup'
+    | '/_auth/forgot-password'
+    | '/_auth/reset-password'
+    | '/_auth/verify-email'
     | '/_layout/about'
     | '/_layout/features'
     | '/_layout/how-it-works'
@@ -312,6 +348,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthLoginRouteImport
       parentRoute: typeof AuthRoute
     }
+    '/_auth/forgot-password': {
+      id: '/_auth/forgot-password'
+      path: '/forgot-password'
+      fullPath: '/forgot-password'
+      preLoaderRoute: typeof AuthForgotPasswordRouteImport
+      parentRoute: typeof AuthRoute
+    }
+    '/_auth/reset-password': {
+      id: '/_auth/reset-password'
+      path: '/reset-password'
+      fullPath: '/reset-password'
+      preLoaderRoute: typeof AuthResetPasswordRouteImport
+      parentRoute: typeof AuthRoute
+    }
+    '/_auth/verify-email': {
+      id: '/_auth/verify-email'
+      path: '/verify-email'
+      fullPath: '/verify-email'
+      preLoaderRoute: typeof AuthVerifyEmailRouteImport
+      parentRoute: typeof AuthRoute
+    }
     '/dashboard/chat/': {
       id: '/dashboard/chat/'
       path: '/'
@@ -334,6 +391,9 @@ interface AuthRouteChildren {
   AuthOnboardingRoute: typeof AuthOnboardingRoute
   AuthQuizRoute: typeof AuthQuizRoute
   AuthSignupRoute: typeof AuthSignupRoute
+  AuthForgotPasswordRoute: typeof AuthForgotPasswordRoute
+  AuthResetPasswordRoute: typeof AuthResetPasswordRoute
+  AuthVerifyEmailRoute: typeof AuthVerifyEmailRoute
 }
 
 const AuthRouteChildren: AuthRouteChildren = {
@@ -341,6 +401,9 @@ const AuthRouteChildren: AuthRouteChildren = {
   AuthOnboardingRoute: AuthOnboardingRoute,
   AuthQuizRoute: AuthQuizRoute,
   AuthSignupRoute: AuthSignupRoute,
+  AuthForgotPasswordRoute: AuthForgotPasswordRoute,
+  AuthResetPasswordRoute: AuthResetPasswordRoute,
+  AuthVerifyEmailRoute: AuthVerifyEmailRoute,
 }
 
 const AuthRouteWithChildren = AuthRoute._addFileChildren(AuthRouteChildren)

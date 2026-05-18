@@ -24,6 +24,12 @@ async def get_current_user(token: Optional[str] = Cookie(default=None)) -> User:
     if not user:
         raise HTTPException(status_code=401, detail="User not found")
 
+    # Token-version check — invalidates JWTs after logout-all / password change.
+    # Tokens issued before this field existed default to tv=0, which matches
+    # the model default, so existing sessions stay valid until reset.
+    if payload.get("tv", 0) != getattr(user, "token_version", 0):
+        raise HTTPException(status_code=401, detail="Session invalidated")
+
     return user
 
 

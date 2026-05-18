@@ -236,6 +236,32 @@ export interface AuthResponse {
   user_type?: string
 }
 
+export interface MessageResponse {
+  message: string
+}
+
+export interface MeResponse {
+  user_id: string
+  email: string
+  full_name?: string
+  user_type?: string
+  email_verified: boolean
+}
+
+export interface ForgotPasswordPayload {
+  email: string
+}
+
+export interface ResetPasswordPayload {
+  token: string
+  new_password: string
+}
+
+export interface ChangePasswordPayload {
+  current_password: string
+  new_password: string
+}
+
 // ── Onboarding requests ──────────────────────────────────────────────────
 
 export interface StudentForm {
@@ -423,7 +449,35 @@ export const api = {
     }),
 
   logout: () => request<{ message: string }>("/user/logout"),
+  logoutAll: () =>
+    request<MessageResponse>("/user/logout-all", { method: "POST" }),
   guest: () => request<AuthResponse>("/user/guest"),
+
+  me: () => request<MeResponse>("/user/me"),
+
+  forgotPassword: (data: ForgotPasswordPayload) =>
+    request<MessageResponse>("/user/forgot-password", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+
+  resetPassword: (data: ResetPasswordPayload) =>
+    request<MessageResponse>("/user/reset-password", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+
+  changePassword: (data: ChangePasswordPayload) =>
+    request<MessageResponse>("/user/change-password", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+
+  verifyEmail: (token: string) =>
+    request<MessageResponse>(`/user/verify-email?token=${encodeURIComponent(token)}`),
+
+  resendVerification: () =>
+    request<MessageResponse>("/user/resend-verification", { method: "POST" }),
 
   submitStudent: (data: StudentForm) => submitUserType("student", data),
   submitEmployed: (data: EmployedForm) => submitUserType("employed", data),
