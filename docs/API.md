@@ -26,9 +26,16 @@ try-it-out is at **http://localhost:8000/docs** while the backend is running.
 | GET | `/contact` | — | Contact page placeholder |
 | GET | `/how-it-works` | — | How-it-works placeholder |
 | POST | `/send-email` | — | Forward contact form to admin email |
-| POST | `/user/signup` | — | Create new user account |
+| POST | `/user/signup` | — | Create new user account (kicks off email verification) |
 | POST | `/user/login` | — | Authenticate existing user |
-| GET | `/user/logout` | ✅ | Clear auth cookie |
+| GET | `/user/logout` | ✅ | Clear auth cookie on this device |
+| **POST** | **`/user/logout-all`** | ✅ | **Invalidate every active JWT for this user (bumps `token_version`)** |
+| **GET** | **`/user/me`** | ✅ | **Lightweight session probe — email, verification status, user_type** |
+| **POST** | **`/user/forgot-password`** | — | **Send a password-reset email (silent on unknown address)** |
+| **POST** | **`/user/reset-password`** | — | **Consume a reset token + set a new password** |
+| **POST** | **`/user/change-password`** | ✅ | **Verify current password + set a new one (invalidates other sessions)** |
+| **GET** | **`/user/verify-email`** | — | **Consume the link from the verification email** |
+| **POST** | **`/user/resend-verification`** | ✅ | **Generate a fresh verify link + re-send it** |
 | GET | `/user/guest` | — | Create anonymous guest session |
 | POST | `/userType/student` | ✅ | Submit student onboarding form |
 | POST | `/userType/update-student` | ✅ | Append goals/categories to existing student profile |
@@ -37,6 +44,7 @@ try-it-out is at **http://localhost:8000/docs** while the backend is running.
 | POST | `/userType/retired` | ✅ | Submit retired onboarding form |
 | **POST** | **`/quiz/{user_type}`** | ✅ | **Save 10-question self-assessment for a user type** |
 | **POST** | **`/chat/{user_type}`** | ✅ | **Conversational AI follow-up — persists turns, returns `conversation_id`** |
+| **POST** | **`/chat/{user_type}/stream`** | ✅ | **Same as above, but streams the reply token-by-token over Server-Sent Events** |
 | **GET** | **`/conversations`** | ✅ | **List the user's conversations for the sidebar** |
 | **GET** | **`/conversations/{id}`** | ✅ | **Load a conversation + its full message list** |
 | **PATCH** | **`/conversations/{id}`** | ✅ | **Rename a conversation** |
@@ -103,9 +111,134 @@ Authenticate an existing user.
 
 ### `GET /user/logout`
 
-Clear the auth cookie.
+Clear the auth cookie on **this device only**. The underlying JWT is technically
+still valid until expiry — for a hard global logout, use `/user/logout-all`.
 
 **Response — 200** — `{ "message": "Logged out successfully" }`
+
+---
+
+### `POST /user/logout-all` 🔒
+
+Invalidate **every** JWT this user has been issued (other browsers, other
+devices, the cookie this request came in on). Done by bumping the user's
+`token_version` field — the auth middleware refuses to accept any JWT whose
+`tv` claim doesn't match the current value, so old tokens become unusable.
+
+Also clears the local cookie before responding.
+
+**Response — 200** — `{ "message": "Signed out of all devices" }`
+
+---
+
+### `GET /user/me` 🔒
+
+Probe the current session. Useful for refreshing UI state (e.g. checking
+whether the user has verified their email since last load).
+
+**Response — 200**
+```json
+{
+  "user_id": "65a...",
+  "email": "jane@example.com",
+  "full_name": "Jane Doe",
+  "user_type": "student",
+  "email_verified": false
+}
+```
+
+---
+
+### `POST /user/forgot-password`
+
+Trigger a password-reset email. The endpoint **always returns 200** — it
+never tells the caller whether the address was registered (so an attacker
+can't use it to enumerate accounts). If the address exists, a single-use
+token is generated, its SHA-256 hash stored in `verification_tokens`, and
+an email goes out with a link to `${FRONTEND_URL}/reset-password?token=...`.
+
+The token expires after **1 hour**.
+
+**Request body** — `{ "email": "jane@example.com" }`
+
+**Response — 200**
+```json
+{ "message": "If an account exists for that email, a reset link is on its way." }
+```
+
+---
+
+### `POST /user/reset-password`
+
+Consume a reset token. On success: the password is replaced, the user's
+`token_version` is bumped (killing every existing session), the token is
+marked `used_at`, and the local cookie is cleared.
+
+**Request body**
+```json
+{
+  "token": "<raw token from the email link>",
+  "new_password": "newsecret123"
+}
+```
+
+**Response — 200** — `{ "message": "Password reset successful" }`
+
+**Errors**:
+- `400` — invalid / already-used / expired token
+- `422` — `new_password` shorter than 6 chars
+
+---
+
+### `POST /user/change-password` 🔒
+
+Set a new password while logged in. Requires the current password to
+prevent a stolen cookie from being used to change credentials.
+
+Successfully changing the password bumps `token_version` (same behavior
+as reset), so other devices stay signed in until they hit a protected
+endpoint and get a 401 — they should then route the user to login.
+
+**Request body**
+```json
+{ "current_password": "old", "new_password": "newsecret123" }
+```
+
+**Response — 200** — `{ "message": "Password changed" }`
+
+**Errors**:
+- `400` — current password wrong, or new equals current
+
+---
+
+### `GET /user/verify-email`
+
+Consume an email-verification token (the link from the welcome / resend
+email). Marks `email_verified=true` on the User and stamps
+`email_verified_at`. The token expires after **24 hours**.
+
+This endpoint is intentionally **public** (no auth) so users can click
+the link from any browser, including one they're not logged into.
+
+**Query**: `?token=<raw token>`
+
+**Response — 200** — `{ "message": "Email verified" }`
+
+**Errors**:
+- `400` — invalid / already-used / expired token
+
+---
+
+### `POST /user/resend-verification` 🔒
+
+Generate a fresh verification token, drop any older outstanding ones for
+this user, and send the email again. No-op (returns 200) if the address
+is already verified.
+
+**Response — 200**
+```json
+{ "message": "Verification email sent" }
+```
 
 ---
 
@@ -113,6 +246,8 @@ Clear the auth cookie.
 
 Create an anonymous guest session. Returns user_id and a 24-hour JWT.
 The guest document auto-deletes from MongoDB after 2 days (TTL index).
+Guest tokens **don't** carry a `tv` claim — guest sessions can't be
+revoked individually, they just expire.
 
 ---
 
@@ -348,6 +483,68 @@ Conversations work the same way as ChatGPT / Gemini / Claude:
 - `400` — unsupported user type / invalid `user_id` / invalid `conversation_id`
 - `404` — profile not found / `conversation_id` doesn't belong to you
 - `200` with apologetic reply text if the AI provider fails (no 5xx leak; the user message is still persisted)
+
+---
+
+### `POST /chat/{user_type}/stream` 🔒
+
+Same request body and semantics as `POST /chat/{user_type}`, but the reply
+is streamed back as **Server-Sent Events** so the UI can render words as
+they're generated.
+
+The user-turn DB write happens **before** the first byte leaves the server,
+and the assistant-turn write + memory upserts happen **after** the stream
+cleanly closes — same durability guarantees as the non-streaming path.
+
+**Response headers**
+```
+Content-Type: text/event-stream
+Cache-Control: no-cache
+X-Accel-Buffering: no       ← tells nginx not to pool chunks
+```
+
+**Event sequence** (each frame ends with a blank line):
+
+```
+event: meta
+data: {"conversation_id": "6a08bf3e8c2a1d4f5e6a7b8c"}
+
+event: delta
+data: {"text": "Given"}
+
+event: delta
+data: {"text": " your runway,"}
+
+...
+
+event: done
+data: {"reply": "Given your runway, prioritize the credit card..."}
+```
+
+| Event | When | Payload |
+|---|---|---|
+| `meta` | First — always fires before any `delta` | `{ "conversation_id": "..." }` |
+| `delta` | Repeatedly, as the provider emits tokens | `{ "text": "<chunk>" }` |
+| `done` | Once, after the LLM stream closes cleanly | `{ "reply": "<full text>" }` (use this as the authoritative final reply so dropped deltas don't desync) |
+| `error` | Replaces `done` on failure | `{ "message": "..." }` |
+
+If the upstream LLM connection drops mid-stream **after** some deltas have
+been sent, the server flushes whatever it has and persists that partial
+reply — you'll see no `done`, just the deltas you already received. Clients
+should treat the assembled deltas as the final answer in that case.
+
+**All five providers** are supported (Local Ollama, OpenAI, Anthropic,
+Gemini via `streamGenerateContent?alt=sse`, Cohere). The cloud providers
+each have their own SSE dialect; `_iter_sse_data` in
+`backend/src/utils/ai_utils.py` normalizes them.
+
+**Frontend usage** — see `frontend/src/lib/api.ts → api.chatStream()`,
+which wraps `fetch` + `ReadableStream` and dispatches to `onMeta`,
+`onDelta`, `onDone` callbacks.
+
+**Errors**:
+- `403` — `user_id` in body doesn't match the authenticated user (same as non-streaming)
+- The stream body itself surfaces failures via `event: error` instead of HTTP status codes (the response status has already been committed to 200 by then)
 
 ---
 

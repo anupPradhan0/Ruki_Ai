@@ -79,7 +79,12 @@ Ruki_Ai/
 ```bash
 # 1. Set up the environment
 cp backend/.env.example backend/.env
-# fill in JWT_SECRET, SMTP creds (no AI key needed by default — local Ollama is the default provider)
+# fill in:
+#   - JWT_SECRET (required)
+#   - SMTP creds  (required for email verification + password-reset emails)
+#   - FRONTEND_URL (defaults to http://localhost:5173 — change for prod so email
+#                   links go to your deployed frontend)
+# No AI key needed by default — local Ollama is the default provider.
 
 # 2. Run everything
 docker compose up --build
@@ -139,12 +144,16 @@ The interactive API explorer is always at **http://localhost:8000/docs** when th
 - **Multi-profile support** — Student, Employed, Unemployed, Retired, Guest. Each profile captures a tailored set of financial info
 - **Local-first AI (privacy by default)** — Gemma 4 E2B runs entirely on your server via Ollama. No data leaves the box unless the user explicitly opts in.
 - **Pick your provider per user** — Settings page lets each user switch to Gemini, OpenAI, Anthropic, or Cohere with their own API key (3 model options each)
+- **Word-by-word streaming chat** — `POST /chat/{type}/stream` returns the reply over Server-Sent Events so the UI paints tokens as the LLM generates them. Works across all 5 providers; same persistence + RAG guarantees as the non-streaming path
 - **Hybrid finance-KB RAG** — Curated India-flavored facts (PPF, ELSS, EMI rules, SCSS, NPS, …) retrieved via **BM25 + vector search merged by RRF, then re-ranked by MMR** — so exact terms like `80C` or `₹1.5 lakh` aren't lost by pure embedding search
 - **Per-user memory RAG** — Every chat turn is embedded into a per-user Qdrant namespace; retrieval combines vector similarity with **exponential time-decay** (30-day half-life) so recent context outweighs stale chats
 - **Smart query router** — Each message is classified `KNOWLEDGE` / `MEMORY` / `BOTH` (regex first, single-token LLM call as fallback) so we only pay for the retrieval the question actually needs
 - **10-question Self-Assessment quiz** — answers are first-class context in the prompt, anchoring advice to the user's habits and risk appetite
 - **7-day advice cache** — Dashboard advice is cached, regenerated when stale or after the quiz is updated
+- **Account management** — Email verification, password reset, change password, "sign out of all devices" (real session invalidation via a `token_version` claim on the JWT, not just a cookie wipe)
 - **JWT cookie auth** — HTTP-only cookies, 30-day expiry for users, 24-hour expiry for guests
+- **Skeletons + toasts** — Layout-matching skeletons replace blank loading states; a tiny imperative toast API surfaces background errors so failures don't fall silent
+- **Mobile-friendly** — `dvh` viewport units so the chat composer stays above the iOS keyboard, `text-base` inputs to skip Safari's zoom-on-focus, safe-area-inset–aware toast positioning, `viewport-fit=cover`
 - **Strict validation** — End-to-end Pydantic types from API boundary all the way to MongoDB
 - **Auto-purging guests** — TTL indexes auto-delete guest data after 2/7 days
 - **OpenAPI/Swagger** — Auto-generated interactive docs at `/docs`

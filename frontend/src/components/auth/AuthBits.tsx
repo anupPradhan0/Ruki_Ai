@@ -1,8 +1,11 @@
 import { useEffect, useState } from "react"
 import { AlertCircle, Clock, Eye, EyeOff } from "lucide-react"
 
+// `text-base sm:text-sm` keeps the field readable on desktop but forces
+// 16px on mobile — anything smaller triggers iOS Safari's zoom-on-focus
+// which jolts the layout every time the user taps a field.
 const inputCls =
-  "w-full bg-[#0F0F0F] border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder-white/30 focus:outline-none focus:border-[#FFD700]/50 transition-colors"
+  "w-full bg-[#0F0F0F] border border-white/10 rounded-xl px-4 py-3 text-base sm:text-sm text-white placeholder-white/30 focus:outline-none focus:border-[#FFD700]/50 transition-colors"
 
 type FieldProps = {
   label: string

@@ -16,6 +16,12 @@ import {
 } from "lucide-react"
 import { api, session, type AiProvider, type UserType } from "@/lib/api"
 import { AuthInput } from "@/components/auth/AuthBits"
+import {
+  SettingsInfoSkeleton,
+  SettingsAiSkeleton,
+  SettingsSecuritySkeleton,
+} from "@/components/Skeleton"
+import { toast } from "@/lib/toast"
 
 type Tab = "info" | "ai" | "security"
 
@@ -91,7 +97,7 @@ function InfoTab() {
   })
 
   if (dashQuery.isLoading) {
-    return <Spinner />
+    return <SettingsInfoSkeleton />
   }
 
   const user = dashQuery.data?.user
@@ -161,8 +167,10 @@ function AiTab() {
       qc.invalidateQueries({ queryKey: ["dashboard"] })
       setApiKey("")
       setSavedFlash(true)
+      toast.success("AI settings saved")
       setTimeout(() => setSavedFlash(false), 2000)
     },
+    onError: (err) => toast.error((err as Error).message ?? "Couldn't save settings"),
   })
 
   // If the saved/loaded model isn't valid for the currently selected provider
@@ -175,7 +183,7 @@ function AiTab() {
     }
   }, [currentProvider, model])
 
-  if (providersQuery.isLoading || settingsQuery.isLoading) return <Spinner />
+  if (providersQuery.isLoading || settingsQuery.isLoading) return <SettingsAiSkeleton />
   if (providersQuery.isError) return <ErrorBox msg={(providersQuery.error as Error).message} />
   if (settingsQuery.isError) return <ErrorBox msg={(settingsQuery.error as Error).message} />
 
@@ -414,8 +422,10 @@ function SecurityTab() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["me"] })
       setResentFlash(true)
+      toast.success("Verification email sent — check your inbox")
       setTimeout(() => setResentFlash(false), 3000)
     },
+    onError: (err) => toast.error((err as Error).message ?? "Couldn't send verification email"),
   })
 
   const logoutAll = useMutation({
@@ -424,6 +434,7 @@ function SecurityTab() {
       session.clear()
       window.location.href = "/login"
     },
+    onError: (err) => toast.error((err as Error).message ?? "Couldn't sign out everywhere"),
   })
 
   const onChangeSubmit = (e: React.FormEvent) => {
@@ -435,7 +446,7 @@ function SecurityTab() {
     changePw.mutate()
   }
 
-  if (meQuery.isLoading) return <Spinner />
+  if (meQuery.isLoading) return <SettingsSecuritySkeleton />
 
   const verified = meQuery.data?.email_verified
 

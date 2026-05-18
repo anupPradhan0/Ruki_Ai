@@ -38,6 +38,7 @@ Every library used in this project, what it does, and why it was picked over alt
 ### **httpx** — async HTTP client
 - Used for every AI provider call (Ollama, OpenAI, Anthropic, Gemini, Cohere) and the Ollama embeddings call
 - Async, drop-in `requests`-style API, supports HTTP/2
+- `httpx.AsyncClient.stream()` powers the **streaming chat** path — we iterate `r.aiter_lines()` and surface text deltas as Server-Sent Events to the browser
 - **Why over `requests`**: blocking; would stall the FastAPI event loop
 - **Why over each provider's SDK**: fewer pinned deps, simpler upgrade story, all providers go through the same dispatcher in `ai_utils.py`
 
@@ -104,6 +105,7 @@ Every library used in this project, what it does, and why it was picked over alt
 ### **Tailwind CSS 3** — styling
 - Utility-first CSS
 - Compile-time → tiny production bundle
+- Tailwind **3.4** for built-in `dvh` units (dynamic viewport height) — the chat page uses `h-dvh` so the composer stays above the iOS keyboard / Safari address bar
 - **Why over CSS modules / styled-components**: faster iteration, no naming, no context switching, smaller output
 
 ### **lucide-react** — icon set
