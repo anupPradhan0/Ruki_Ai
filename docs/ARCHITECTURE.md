@@ -81,7 +81,9 @@ backend/
     ├── models/                       ← MongoDB schemas (Beanie Documents)
     │   ├── enums.py                    ← Currency, UserType, EmploymentType, …
     │   ├── sub_documents.py            ← FinancialGoal, IncomeSource, QuizAnswer, …
-    │   ├── user_model.py               ← + ai_provider, ai_model, ai_api_key
+    │   ├── user_model.py               ← + ai_provider/ai_model/ai_api_key,
+    │   │                                  + email_verified/email_verified_at,
+    │   │                                  + token_version/password_changed_at
     │   ├── student_model.py
     │   ├── employed_model.py
     │   ├── unemployed_model.py
@@ -90,7 +92,8 @@ backend/
     │   ├── guest_user_model.py
     │   ├── feedback_model.py
     │   ├── knowledge_model.py          ← KnowledgeChunk — text-only mirror of a Qdrant point
-    │   └── chat_message_model.py       ← ChatMessage — authoritative chat log (vectors in Qdrant)
+    │   ├── chat_message_model.py       ← ChatMessage — authoritative chat log (vectors in Qdrant)
+    │   └── verification_token_model.py ← Hashed reset / verify tokens (TTL on expires_at)
     │
     ├── schemas/                      ← API request/response shapes
     │   ├── common_schemas.py
@@ -115,7 +118,8 @@ backend/
     │   └── feedback_repository.py
     │
     ├── services/
-    │   ├── auth_service.py
+    │   ├── auth_service.py             ← signup (kicks off verify email), login (issues tv-stamped JWT)
+    │   ├── password_service.py         ← forgot / reset / verify / change / logout-all flows
     │   ├── student_service.py          ← form + dashboard
     │   ├── employed_service.py
     │   ├── unemployed_service.py
@@ -123,7 +127,7 @@ backend/
     │   ├── guest_service.py
     │   ├── feedback_service.py
     │   ├── quiz_service.py             ← save_quiz_responses(type, user_id, answers)
-    │   ├── chat_service.py             ← chat_with_ai(type, ChatRequest)
+    │   ├── chat_service.py             ← chat_with_ai + stream_chat_with_ai (SSE generator)
     │   ├── ai_settings_service.py      ← list/get/update per-user AI provider settings
     │   │
     │   ├── qdrant_client.py            ← Async Qdrant singleton + init_qdrant
@@ -134,24 +138,29 @@ backend/
     │
     ├── routers/
     │   ├── index_router.py             ← Public pages, send-email
-    │   ├── auth_router.py              ← /user/signup, login, logout, guest
+    │   ├── auth_router.py              ← /user/signup, login, logout, logout-all, me,
+    │   │                                  forgot-password, reset-password, change-password,
+    │   │                                  verify-email, resend-verification, guest
     │   ├── user_type_router.py         ← /userType/{type}
     │   ├── dashboard_router.py         ← /dashboard/{type}
     │   ├── feedback_router.py
     │   ├── quiz_router.py              ← POST /quiz/{user_type}
-    │   ├── chat_router.py              ← POST /chat/{user_type}
+    │   ├── chat_router.py              ← POST /chat/{user_type} + /chat/{user_type}/stream (SSE)
     │   └── ai_settings_router.py       ← /ai-settings/* — providers + per-user config
     │
     ├── middleware/
-    │   └── auth_middleware.py        ← get_current_user dependency (JWT)
+    │   └── auth_middleware.py        ← get_current_user dependency (JWT + token_version check)
     │
     └── utils/
-        ├── jwt_utils.py
+        ├── jwt_utils.py               ← create_token(user_id, tv) — JWT carries a `tv` claim
         ├── password_utils.py
+        ├── tokens.py                  ← generate_token() → (raw, sha256_hash) for verify/reset
         ├── ai_utils.py                ← multi-provider dispatcher: Local Ollama / OpenAI /
-        │                                Anthropic / Gemini / Cohere. Owns prompt templates.
+        │                                Anthropic / Gemini / Cohere. Owns prompt templates,
+        │                                plus streaming variants (`_*_chat_stream`) for SSE.
         ├── embed_utils.py             ← Ollama nomic-embed-text + embed_batch + cosine
-        └── email_utils.py
+        └── email_utils.py             ← send_email (contact) + send_transactional_email
+                                          + verify / reset HTML templates
 
 scripts/
 ├── ingest_finance_docs.py             ← chunk + embed + upsert .txt/.md (or built-in seed)
@@ -187,42 +196,88 @@ fetches the dashboard, sees the flags, and bounces them to the right step.
 frontend/src/
 ├── App.tsx, main.tsx, index.css
 ├── lib/
-│   └── api.ts                       ← typed fetch wrapper, all endpoint calls,
-│                                       session.{save, read, clear, setUserType}
+│   ├── api.ts                       ← typed fetch wrapper, all endpoint calls,
+│   │                                   session.{save, read, clear, setUserType},
+│   │                                   chatStream() — SSE reader for word-by-word chat
+│   ├── toast.ts                     ← imperative toast store: toast.error/success/info(),
+│   │                                   subscribe() — no provider, importable anywhere
+│   └── utils.ts                     ← cn() (clsx + tailwind-merge)
 │
 ├── components/
 │   ├── Navbar.tsx                   ← marketing nav (login/signup pages only)
-│   ├── Sidebar.tsx                  ← dashboard nav (Overview, AI Chat, Logout)
+│   ├── Sidebar.tsx                  ← dashboard nav (Overview, AI Chat, Settings, Logout)
 │   ├── Footer.tsx
+│   ├── ConversationList.tsx         ← sidebar list of past chats + rename/delete
+│   ├── MarkdownText.tsx             ← lightweight markdown renderer for chat / advice
+│   ├── Skeleton.tsx                 ← skeleton primitives + DashboardSkeleton,
+│   │                                   SettingsInfo/Ai/SecuritySkeleton, ChatHistorySkeleton,
+│   │                                   ConversationListSkeleton
+│   ├── Toaster.tsx                  ← renders toast.ts items; bottom-right on sm+,
+│   │                                   bottom-center on mobile, safe-area aware
+│   ├── auth/
+│   │   └── AuthBits.tsx             ← AuthInput, AuthErrorBanner, ColdStartBanner, useColdStart
 │   ├── sections/                    ← marketing landing-page sections
 │   └── pages/
 │       ├── LoginPage.tsx
 │       ├── SignupPage.tsx
+│       ├── ForgotPasswordPage.tsx   ← email form, always shows "if account exists..."
+│       ├── ResetPasswordPage.tsx    ← reads ?token=, sets new password, clears session
+│       ├── VerifyEmailPage.tsx      ← reads ?token=, calls /user/verify-email
 │       ├── OnboardingPage.tsx       ← all 4 user-type forms in one page
 │       ├── QuizPage.tsx             ← 10 MCQs per user type, paginated
-│       ├── DashboardLayout.tsx      ← gating + sidebar + Outlet
+│       ├── DashboardLayout.tsx      ← gating + sidebar + Outlet + dashboard skeleton
 │       ├── DashboardOverview.tsx    ← cards: AI advice, goals, expenses, quiz
-│       └── ChatPage.tsx             ← Claude-style composer + message log
+│       ├── ChatPage.tsx             ← Claude-style composer + streaming message log
+│       └── SettingsPage.tsx         ← Info / AI & API / Security tabs
 │
 └── routes/                          ← TanStack Router file-based routes
-    ├── __root.tsx                   ← bare <Outlet />
+    ├── __root.tsx                   ← <Outlet /> + <Toaster />
     ├── _layout.tsx                  ← marketing pages (Navbar + Footer)
     │   ├── index.tsx                ← /
     │   ├── about.tsx
     │   ├── features.tsx
     │   └── how-it-works.tsx
-    ├── _auth.tsx                    ← Navbar + main (login, signup, onboarding, quiz)
+    ├── _auth.tsx                    ← Navbar + main (login, signup, onboarding, quiz,
+    │   │                              forgot-password, reset-password, verify-email)
     │   ├── login.tsx
     │   ├── signup.tsx
+    │   ├── forgot-password.tsx
+    │   ├── reset-password.tsx       ← validateSearch parses ?token=...
+    │   ├── verify-email.tsx         ← validateSearch parses ?token=...
     │   ├── onboarding.tsx
     │   └── quiz.tsx
     └── dashboard.tsx                ← top-level (no Navbar) — DashboardLayout
         ├── index.tsx                ← /dashboard
-        └── chat.tsx                 ← /dashboard/chat
+        ├── settings.tsx             ← /dashboard/settings
+        ├── chat.tsx                 ← /dashboard/chat parent
+        ├── chat.index.tsx           ← /dashboard/chat (no conversation selected)
+        └── chat.$conversationId.tsx ← /dashboard/chat/<id>
 ```
 
 The dashboard sits **outside** the `_auth` group on purpose — it owns its
 chrome (Sidebar) and shouldn't inherit the marketing Navbar.
+
+### Frontend UX layer — skeletons, toasts, mobile
+
+Three small primitives keep the app from feeling broken while the backend
+works:
+
+**Skeletons** (`components/Skeleton.tsx`)
+- Page-shaped components (`DashboardSkeleton`, `SettingsInfoSkeleton`, `SettingsAiSkeleton`, `SettingsSecuritySkeleton`, `ChatHistorySkeleton`, `ConversationListSkeleton`) mirror the eventual layout so there's no jump when data lands.
+- Used in `DashboardLayout`, each `SettingsPage` tab, `ChatPage` (conversation history load), and the sidebar `ConversationList`.
+- Short button-press feedback (login, save, regenerate) stays as inline `<Loader2>` — that's the right pattern for a 200-1000ms action where you want the same surface to dim, not skeleton-flash.
+
+**Toasts** (`lib/toast.ts` + `components/Toaster.tsx`)
+- No provider, no prop drilling. `import { toast } from "@/lib/toast"` and call `toast.error("...")` from anywhere — including non-React files.
+- The `<Toaster />` lives once in `routes/__root.tsx` and subscribes to the store. Toasts auto-dismiss after 5s; manual X button per toast.
+- Positioned bottom-center on mobile, bottom-right on `sm+`. Padding uses `env(safe-area-inset-bottom)` so toasts clear iOS home-bar / Android gesture pill — that's also why `index.html` declares `viewport-fit=cover`.
+- Use `toastError(err, fallback)` for unknown rejections — it handles `Error`, plain strings, and falls back to a message if neither.
+- Wired into every "background" mutation failure where there's no inline banner: dashboard fetch, conversation rename/delete, regenerate advice, AI settings save, logout-all, resend-verification, chat send.
+
+**Mobile**
+- All full-page heights on `ChatPage` use **`dvh`** (dynamic viewport units, Tailwind 3.4+) instead of `vh` / `h-screen`. That's the fix for "composer hides under the iOS keyboard or address bar" — `dvh` shrinks when the keyboard is up.
+- Inputs use `text-base sm:text-sm` (16px mobile, 14px desktop). Anything < 16px triggers iOS Safari's zoom-on-focus, which jolts the page every tap. Applies to `AuthInput` and the chat composer textarea.
+- The sidebar drawer (`components/Sidebar.tsx`) is mobile-aware: top bar + hamburger on `< md`, sticky 240px aside on `md+`.
 
 ---
 
@@ -319,6 +374,51 @@ chrome (Sidebar) and shouldn't inherit the marketing Navbar.
 **Sessions**:
 - Regular users: 30-day JWT
 - Guests: 24-hour JWT, plus a TTL index that auto-deletes the Guest doc after 2 days
+
+### Session invalidation — `token_version`
+
+The JWT payload carries three claims: `sub` (user id), `exp` (expiry), and
+`tv` (token_version). The auth middleware loads the user and rejects the
+request with 401 if `payload["tv"] != user.token_version`.
+
+Bumping `token_version` by 1 therefore kills every JWT that was ever issued
+to that user. That's how we implement:
+
+- **`POST /user/logout-all`** — explicit "sign out of all my devices" button
+- **`POST /user/reset-password`** — a password reset must also invalidate every existing session, otherwise an attacker who already grabbed a cookie still has access after the legitimate owner resets
+- **`POST /user/change-password`** — same reasoning. The current device keeps the user signed in only until the next request, at which point the stale `tv` triggers a 401 and the frontend routes back to login
+
+Guests don't have a `token_version` field — guest sessions can't be revoked
+individually, they just expire.
+
+### Email verification flow
+
+1. **Signup** kicks off `password_service.issue_email_verification()` (best-effort — if SMTP is down the user is still created, they can resend later).
+2. The service generates a random URL-safe token, stores **only the SHA-256 hash** in the `verification_tokens` collection, and emails the **raw** token in a link to `${FRONTEND_URL}/verify-email?token=...`.
+3. Clicking the link hits `GET /user/verify-email?token=...`, which hashes the token and looks it up. Match + unused + not expired → flip `email_verified=True`, stamp `email_verified_at`, mark the token row `used_at`.
+4. `verification_tokens` has a TTL index on `expires_at`, so Mongo auto-deletes spent rows.
+
+Token TTLs: verify links last **24h**, reset links last **1h**.
+
+### Password reset flow
+
+`POST /user/forgot-password` always returns 200, regardless of whether the
+email is registered — that's deliberate so the endpoint can't be used to
+enumerate accounts. If the address does exist, an outstanding-tokens cleanup
+runs first (so old links stop working), a new token is generated, and an
+email goes out.
+
+`POST /user/reset-password` consumes the token (same hash-lookup as
+verification), replaces the password hash, bumps `token_version`, and
+clears the cookie on the response. The user must log in fresh.
+
+### Hashed tokens — why
+
+The verification / reset tokens are functionally **bearer secrets**: anyone
+with the raw value can reset the password or verify the email. Storing only
+the SHA-256 hash means a DB-leak doesn't expose live links. The raw value
+exists exactly once, in the email body. `utils/tokens.py` is the only place
+that generates them.
 
 ---
 
@@ -445,6 +545,38 @@ Cascade rules:
   (created before this feature, `conversation_id = None`) are untouched.
 - Renames update `conversation.title` and bump `updated_at`.
 
+### Streaming chat — `POST /chat/{type}/stream`
+
+The streaming endpoint mirrors the non-streaming one but yields the reply
+token-by-token over Server-Sent Events so the UI can paint words as they
+arrive. Same durability guarantees:
+
+1. Resolve / create the conversation **before** the first byte leaves the server.
+2. Persist the user turn.
+3. Emit `event: meta` with the `conversation_id` so the client can flip its URL on a brand-new chat.
+4. Call `build_chat_messages()` (shared with the non-streaming path so RAG / routing / prompt assembly stay in one place).
+5. Iterate the provider's stream via `dispatch_chat_stream()` — accumulate locally **and** emit each chunk as `event: delta`.
+6. When the upstream stream closes cleanly: persist the assistant turn, schedule the memory writers, emit `event: done` with the full assembled text.
+7. If the upstream connection drops mid-stream with at least one chunk already delivered, persist the **partial** reply and end the stream with no `done` event — clients should treat the assembled deltas as final.
+
+`build_chat_messages()` returns `(messages, query_vec)`; the streaming
+service uses the same `query_vec` the non-streaming path does for the
+Qdrant memory upsert, so retrieval quality doesn't change between the two
+endpoints.
+
+Each cloud provider has its own SSE dialect. `_iter_sse_data()` normalizes
+`data: ...` lines + `[DONE]` markers; each `_*_chat_stream` async generator
+above it knows how to decode that provider's delta shape:
+- **OpenAI**: `choices[0].delta.content`
+- **Anthropic**: `content_block_delta` events with `delta.type == "text_delta"`
+- **Gemini**: `streamGenerateContent?alt=sse`, candidates → content.parts[].text
+- **Cohere**: `content-delta` events
+- **Ollama**: NDJSON (not SSE), `message.content` per line until `done: true`
+
+`X-Accel-Buffering: no` is set on the response so nginx / cloud proxies
+flush chunks immediately instead of pooling them — without this you'd see
+one big block at the end instead of word-by-word arrival.
+
 ### Caching strategy
 
 - `ai_advice` and `ai_advice_generated_at` live on each profile document.
@@ -550,6 +682,14 @@ Frontend can rely on consistent error shapes: every error response is
 | Adjust JWT expiry | `utils/jwt_utils.py` + `routers/auth_router.py` cookie max_age |
 | Add a new env var | `config/settings.py` + `.env` + `.env.example` |
 | Change MongoDB connection | `db/database.py` |
+| Invalidate every JWT for a user (force re-login) | `user.token_version += 1; await user.save()` — auth middleware does the rest |
+| Send a new transactional email | Add a template helper to `utils/email_utils.py` (use `_shell()` for the HTML), call `send_transactional_email()` |
+| Add a new verify / reset-style one-shot token | `utils/tokens.py` for raw/hash, `models/verification_token_model.py` for storage (new `purpose` value), then a flow in `password_service.py` |
+| Add a new AI provider streaming endpoint | Add `_<provider>_chat_stream` in `utils/ai_utils.py` + branch in `_dispatch_stream` |
+| Show a toast | `import { toast, toastError } from "@/lib/toast"` — `toast.error("…")`, `toast.success("…")`, or `toastError(err, "fallback")` |
+| Add a new skeleton | `frontend/src/components/Skeleton.tsx` — compose `Bar` + the existing primitives so the shape matches the eventual layout |
+| Stop iOS from zooming on a new input | Make sure its font is `text-base sm:text-sm` (16px on mobile) |
+| Add the email link URL base | `config/settings.py → FRONTEND_URL` (also in `.env.example`); used by `password_service._frontend_base()` |
 
 ---
 
