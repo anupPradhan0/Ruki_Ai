@@ -87,9 +87,10 @@ export default function ChatPage({ conversationId }: ChatPageProps = {}) {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" })
   }, [messages])
 
-  // Streaming state: while the assistant is responding, the last entry in
-  // `messages` is its in-progress turn that grows chunk by chunk.
-  const [streaming, setStreaming] = useState(false)
+  // While the assistant is responding, the last entry in `messages` is its
+  // in-progress turn that grows chunk by chunk. `sendMutation.isPending`
+  // covers the "is the request still running?" question, so we don't need a
+  // separate streaming flag.
   const sendMutation = useMutation({
     mutationFn: async (msg: string) => {
       if (!userType) throw new Error("Missing user type")
@@ -102,7 +103,6 @@ export default function ChatPage({ conversationId }: ChatPageProps = {}) {
         { role: "user", content: msg },
         { role: "assistant", content: "" },
       ])
-      setStreaming(true)
 
       let assembled = ""
       let newConversationId: string | undefined
@@ -150,7 +150,6 @@ export default function ChatPage({ conversationId }: ChatPageProps = {}) {
       return { conversationId: newConversationId, reply: assembled, sentMsg: msg, historyAtSend }
     },
     onSuccess: ({ conversationId: newId, reply, sentMsg, historyAtSend }) => {
-      setStreaming(false)
       queryClient.invalidateQueries({ queryKey: ["conversations"] })
 
       const finalMessages: ChatTurn[] = [
@@ -182,7 +181,6 @@ export default function ChatPage({ conversationId }: ChatPageProps = {}) {
       }
     },
     onError: (err) => {
-      setStreaming(false)
       toastError(err, "Chat failed — please try again")
       // Drop the empty assistant placeholder and the user message we pushed.
       setMessages((prev) => {

@@ -371,14 +371,6 @@ function Label({ children }: { children: React.ReactNode }) {
   return <label className="text-[11px] uppercase tracking-wide text-white/50">{children}</label>
 }
 
-function Spinner() {
-  return (
-    <div className="flex items-center justify-center py-12">
-      <Loader2 className="text-white/40 animate-spin" size={22} />
-    </div>
-  )
-}
-
 function ErrorBox({ msg }: { msg: string }) {
   return (
     <div className="bg-red-500/5 border border-red-500/30 rounded-xl p-4 text-red-400 text-sm">{msg}</div>
