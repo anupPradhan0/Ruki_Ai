@@ -13,6 +13,7 @@ from src.models.feedback_model import Feedback
 from src.models.knowledge_model import KnowledgeChunk
 from src.models.chat_message_model import ChatMessage
 from src.models.conversation_model import Conversation
+from src.models.verification_token_model import VerificationToken
 
 
 async def init_db() -> None:
@@ -32,5 +33,6 @@ async def init_db() -> None:
             KnowledgeChunk,
             ChatMessage,
             Conversation,
+            VerificationToken,
         ],
     )

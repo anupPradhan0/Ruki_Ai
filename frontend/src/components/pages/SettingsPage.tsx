@@ -1,9 +1,22 @@
 import { useEffect, useMemo, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { Loader2, Save, KeyRound, User as UserIcon, Sparkles, Check, Server, AlertTriangle, X } from "lucide-react"
+import {
+  Loader2,
+  Save,
+  KeyRound,
+  User as UserIcon,
+  Sparkles,
+  Check,
+  Server,
+  AlertTriangle,
+  X,
+  Shield,
+  MailCheck,
+  LogOut,
+} from "lucide-react"
 import { api, session, type AiProvider, type UserType } from "@/lib/api"
 
-type Tab = "info" | "ai"
+type Tab = "info" | "ai" | "security"
 
 const VALID_TYPES: UserType[] = ["student", "employed", "unemployed", "retired"]
 
@@ -28,9 +41,12 @@ export default function SettingsPage() {
         <TabButton active={tab === "ai"} onClick={() => setTab("ai")} icon={<Sparkles size={14} />}>
           AI &amp; API
         </TabButton>
+        <TabButton active={tab === "security"} onClick={() => setTab("security")} icon={<Shield size={14} />}>
+          Security
+        </TabButton>
       </div>
 
-      {tab === "info" ? <InfoTab /> : <AiTab />}
+      {tab === "info" ? <InfoTab /> : tab === "ai" ? <AiTab /> : <SecurityTab />}
     </div>
   )
 }
@@ -357,5 +373,195 @@ function Spinner() {
 function ErrorBox({ msg }: { msg: string }) {
   return (
     <div className="bg-red-500/5 border border-red-500/30 rounded-xl p-4 text-red-400 text-sm">{msg}</div>
+  )
+}
+
+function SecurityTab() {
+  const qc = useQueryClient()
+
+  const meQuery = useQuery({
+    queryKey: ["me"],
+    queryFn: api.me,
+    retry: false,
+  })
+
+  const [current, setCurrent] = useState("")
+  const [next, setNext] = useState("")
+  const [confirm, setConfirm] = useState("")
+  const [pwSaved, setPwSaved] = useState(false)
+  const [pwError, setPwError] = useState<string | null>(null)
+
+  const changePw = useMutation({
+    mutationFn: () => api.changePassword({ current_password: current, new_password: next }),
+    onSuccess: () => {
+      setPwSaved(true)
+      setCurrent("")
+      setNext("")
+      setConfirm("")
+      setTimeout(() => setPwSaved(false), 2200)
+      // Password change bumped token_version on the server; our cookie is now stale.
+      // Send the user back to login.
+      setTimeout(() => {
+        session.clear()
+        window.location.href = "/login"
+      }, 1500)
+    },
+    onError: (e) => setPwError((e as Error).message),
+  })
+
+  const resend = useMutation({
+    mutationFn: () => api.resendVerification(),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["me"] }),
+  })
+
+  const logoutAll = useMutation({
+    mutationFn: () => api.logoutAll(),
+    onSuccess: () => {
+      session.clear()
+      window.location.href = "/login"
+    },
+  })
+
+  const onChangeSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    setPwError(null)
+    if (next.length < 6) return setPwError("New password must be at least 6 characters.")
+    if (next !== confirm) return setPwError("New passwords don't match.")
+    if (next === current) return setPwError("New password must differ from current.")
+    changePw.mutate()
+  }
+
+  if (meQuery.isLoading) return <Spinner />
+
+  const verified = meQuery.data?.email_verified
+
+  return (
+    <div className="space-y-8">
+      {/* Email verification block */}
+      <section className="space-y-2">
+        <Label>Email verification</Label>
+        <div className="bg-[#111] border border-white/5 rounded-xl p-5 flex items-start justify-between gap-4">
+          <div className="flex items-start gap-3">
+            <div
+              className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${
+                verified ? "bg-emerald-500/10 text-emerald-400" : "bg-amber-500/10 text-amber-400"
+              }`}
+            >
+              {verified ? <MailCheck size={16} /> : <AlertTriangle size={16} />}
+            </div>
+            <div>
+              <div className="text-sm font-medium">
+                {verified ? "Your email is verified" : "Your email isn't verified yet"}
+              </div>
+              <div className="text-[12px] text-white/50 mt-0.5">
+                {meQuery.data?.email}
+              </div>
+              {!verified && (
+                <div className="text-[12px] text-white/40 mt-1.5 leading-relaxed">
+                  We send important messages (password resets, security alerts) here. Verify so we can reach you.
+                </div>
+              )}
+            </div>
+          </div>
+          {!verified && (
+            <button
+              type="button"
+              onClick={() => resend.mutate()}
+              disabled={resend.isPending || resend.isSuccess}
+              className="shrink-0 px-3.5 py-2 rounded-lg border border-white/10 text-xs text-white/80 hover:border-[#FFD700]/40 hover:text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {resend.isPending ? "Sending..." : resend.isSuccess ? "Sent ✓" : "Resend"}
+            </button>
+          )}
+        </div>
+      </section>
+
+      {/* Change password */}
+      <section className="space-y-3">
+        <Label>Change password</Label>
+        <form onSubmit={onChangeSubmit} className="bg-[#111] border border-white/5 rounded-xl p-5 space-y-4">
+          <PasswordField label="Current password" value={current} onChange={setCurrent} />
+          <PasswordField label="New password" value={next} onChange={setNext} hint="(min 6 chars)" />
+          <PasswordField label="Confirm new password" value={confirm} onChange={setConfirm} />
+
+          {pwError && (
+            <div className="text-[12px] text-red-400">{pwError}</div>
+          )}
+
+          <div className="flex items-center gap-3 pt-1">
+            <button
+              type="submit"
+              disabled={changePw.isPending || !current || !next || !confirm}
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#FFD700] text-black text-sm font-medium hover:bg-[#e6c200] disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+            >
+              {changePw.isPending ? <Loader2 size={14} className="animate-spin" /> : <KeyRound size={14} />}
+              Update password
+            </button>
+            {pwSaved && (
+              <span className="text-sm text-emerald-400 flex items-center gap-1.5">
+                <Check size={14} /> Updated — signing you out
+              </span>
+            )}
+          </div>
+        </form>
+      </section>
+
+      {/* Logout-all */}
+      <section className="space-y-3">
+        <Label>Sessions</Label>
+        <div className="bg-[#111] border border-white/5 rounded-xl p-5 flex items-start justify-between gap-4">
+          <div className="flex items-start gap-3">
+            <div className="w-9 h-9 rounded-lg bg-red-500/10 text-red-400 flex items-center justify-center shrink-0">
+              <LogOut size={16} />
+            </div>
+            <div>
+              <div className="text-sm font-medium">Sign out of all devices</div>
+              <div className="text-[12px] text-white/50 mt-0.5 leading-relaxed">
+                Invalidates every active session on every browser. Use this if you think your account was accessed from a device you don't recognize.
+              </div>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              if (window.confirm("Sign out of every device, including this one?")) {
+                logoutAll.mutate()
+              }
+            }}
+            disabled={logoutAll.isPending}
+            className="shrink-0 px-3.5 py-2 rounded-lg border border-red-500/30 text-xs text-red-400 hover:bg-red-500/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {logoutAll.isPending ? "Signing out..." : "Sign out everywhere"}
+          </button>
+        </div>
+      </section>
+    </div>
+  )
+}
+
+function PasswordField({
+  label,
+  value,
+  onChange,
+  hint,
+}: {
+  label: string
+  value: string
+  onChange: (v: string) => void
+  hint?: string
+}) {
+  return (
+    <div>
+      <label className="block text-[11px] uppercase tracking-wide text-white/50 mb-1.5">
+        {label}
+        {hint && <span className="text-white/30 normal-case tracking-normal ml-1">{hint}</span>}
+      </label>
+      <input
+        type="password"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full bg-[#0F0F0F] border border-white/10 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-[#FFD700]/40"
+      />
+    </div>
   )
 }
