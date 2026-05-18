@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react"
 import { Link, useRouterState } from "@tanstack/react-router"
-import { LayoutDashboard, MessageSquare, LogOut, Sparkles, Settings, Menu, X } from "lucide-react"
+import { LayoutDashboard, MessageSquare, LogOut, Sparkles, Settings, Menu, X, Wallet } from "lucide-react"
 import { api, session } from "@/lib/api"
 import ConversationList from "@/components/ConversationList"
 
 const NAV = [
   { to: "/dashboard", label: "Overview", icon: LayoutDashboard },
+  { to: "/dashboard/money", label: "Money", icon: Wallet },
   { to: "/dashboard/chat", label: "AI Chat", icon: MessageSquare },
   { to: "/dashboard/settings", label: "Settings", icon: Settings },
 ] as const
@@ -58,7 +59,8 @@ export default function Sidebar() {
         // Highlight "AI Chat" for both the base /dashboard/chat path and conversation pages.
         const active =
           path === item.to ||
-          (item.to === "/dashboard/chat" && path.startsWith("/dashboard/chat"))
+          (item.to === "/dashboard/chat" && path.startsWith("/dashboard/chat")) ||
+          (item.to === "/dashboard/money" && path.startsWith("/dashboard/money"))
         return (
           <Link
             key={item.to}

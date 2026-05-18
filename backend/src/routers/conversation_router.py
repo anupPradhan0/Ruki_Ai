@@ -1,7 +1,6 @@
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
-from beanie import PydanticObjectId
+from fastapi import APIRouter, Depends, Response, status
 
 from src.middleware.auth_middleware import get_current_user
 from src.models.user_model import User
@@ -11,16 +10,14 @@ from src.schemas.chat_schemas import (
     RenameConversationRequest,
 )
 from src.services import conversation_service
+from src.utils.id_utils import parse_object_id
 
 
 router = APIRouter(prefix="/conversations", tags=["conversations"])
 
 
-def _parse_id(raw: str) -> PydanticObjectId:
-    try:
-        return PydanticObjectId(raw)
-    except Exception:
-        raise HTTPException(status_code=400, detail="Invalid conversation ID")
+def _parse_id(raw: str):
+    return parse_object_id(raw, "conversation ID")
 
 
 @router.get("", response_model=List[ConversationSummary])

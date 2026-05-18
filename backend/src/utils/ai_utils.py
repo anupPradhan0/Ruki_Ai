@@ -95,6 +95,34 @@ def _extract_essential_fields(profile: Any, user_type: str) -> dict:
     return {k: v for k, v in data.items() if v is not None}
 
 
+def _format_recent_spend(spend: Optional[dict]) -> str:
+    """Render the user's last-N-days spending summary as a labelled block."""
+    if not spend:
+        return ""
+    total_exp = spend.get("total_expense") or 0
+    total_inc = spend.get("total_income") or 0
+    top = spend.get("top_categories") or []
+    if not total_exp and not total_inc and not top:
+        return ""
+    lines = [f"  Last {spend.get('days', 30)} days: spent ₹{total_exp:,.0f}, income ₹{total_inc:,.0f}"]
+    if top:
+        cats = ", ".join(f"{c} ₹{v:,.0f}" for c, v in top)
+        lines.append(f"  Top categories: {cats}")
+    return "\n".join(lines)
+
+
+async def _fetch_recent_spend(user_id: Optional[PydanticObjectId]) -> Optional[dict]:
+    """Lazy import to avoid cycles. Returns None if user_id missing or query fails."""
+    if user_id is None:
+        return None
+    try:
+        from src.services.transaction_service import recent_spend_summary
+        return await recent_spend_summary(user_id)
+    except Exception as exc:
+        print(f"recent_spend fetch failed: {exc}")
+        return None
+
+
 def _format_self_assessment(qa_list: Optional[list]) -> str:
     """Render the 10-question self-assessment quiz answers as a labelled block."""
     if not qa_list:
@@ -115,6 +143,7 @@ def _build_advice_prompt(
     data: dict,
     context: str = "",
     history_context: str = "",
+    recent_spend: Optional[dict] = None,
 ) -> str:
     # Self-assessment is its own block — pull it out so the AI weights it explicitly.
     profile_data = {k: v for k, v in data.items() if k != "self_assessment"}
@@ -122,6 +151,12 @@ def _build_advice_prompt(
     quiz_block = (
         f"\nSELF-ASSESSMENT (10-question quiz — anchor your advice in these answers):\n{quiz_block_text}\n"
         if quiz_block_text
+        else ""
+    )
+    spend_text = _format_recent_spend(recent_spend)
+    spend_block = (
+        f"\nRECENT SPENDING (the user's actual transactions — use these numbers, don't invent):\n{spend_text}\n"
+        if spend_text
         else ""
     )
 
@@ -140,7 +175,7 @@ def _build_advice_prompt(
 
 PROFILE:
 {bullets}
-{quiz_block}{knowledge_block}{history_block}
+{quiz_block}{spend_block}{knowledge_block}{history_block}
 REQUIREMENTS:
 • Provide 5-7 specific, actionable recommendations
 • Focus on goal achievement and budget optimization
@@ -166,6 +201,7 @@ def _build_chat_system(
     data: dict,
     context: str = "",
     history_context: str = "",
+    recent_spend: Optional[dict] = None,
 ) -> str:
     profile_data = {k: v for k, v in data.items() if k != "self_assessment"}
     quiz_block_text = _format_self_assessment(data.get("self_assessment"))
@@ -173,6 +209,12 @@ def _build_chat_system(
         f"\nSelf-assessment (use these to tailor every reply — they reveal the user's habits, "
         f"risk appetite, and priorities):\n{quiz_block_text}\n"
         if quiz_block_text
+        else ""
+    )
+    spend_text = _format_recent_spend(recent_spend)
+    spend_block = (
+        f"\nRecent spending (real transactions — cite exact figures when answering money questions):\n{spend_text}\n"
+        if spend_text
         else ""
     )
     knowledge_block = (
@@ -189,11 +231,12 @@ def _build_chat_system(
         f"You are RukiAI, a personal finance advisor for a {user_type} user.\n"
         f"Their profile data: {profile_data}.\n"
         f"{quiz_block}"
+        f"{spend_block}"
         f"{history_block}"
         f"{knowledge_block}"
-        "Give specific, actionable, numbers-backed advice grounded in the user's profile and "
-        "self-assessment. Keep replies concise (under 200 words unless the user asks for detail). "
-        "Use bullets when listing."
+        "Give specific, actionable, numbers-backed advice grounded in the user's profile, "
+        "self-assessment, and recent spending. Keep replies concise (under 200 words unless the "
+        "user asks for detail). Use bullets when listing."
     )
 
 
@@ -610,12 +653,15 @@ async def get_ai_advice(
         if user_id is not None and query_vec
         else asyncio.sleep(0, result=[])
     )
-    knowledge, memory = await asyncio.gather(knowledge_task, memory_task)
+    spend_task = _fetch_recent_spend(user_id)
+    knowledge, memory, recent_spend = await asyncio.gather(knowledge_task, memory_task, spend_task)
 
     context = format_knowledge(knowledge)
     history_context = format_memory(memory)
 
-    prompt = _build_advice_prompt(user_type, data, context=context, history_context=history_context)
+    prompt = _build_advice_prompt(
+        user_type, data, context=context, history_context=history_context, recent_spend=recent_spend
+    )
     messages = [{"role": "user", "content": prompt}]
     try:
         text = await _dispatch(settings, messages, temperature=0.9, max_tokens=1500)
@@ -710,11 +756,12 @@ async def build_chat_messages(
         context = format_knowledge(knowledge)
         history_context = format_memory(memory)
 
+    recent_spend = await _fetch_recent_spend(user_id)
     messages: list = [
         {
             "role": "system",
             "content": _build_chat_system(
-                user_type, data, context=context, history_context=history_context
+                user_type, data, context=context, history_context=history_context, recent_spend=recent_spend
             ),
         }
     ]
