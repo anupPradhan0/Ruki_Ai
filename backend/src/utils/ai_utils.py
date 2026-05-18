@@ -1,5 +1,6 @@
 import asyncio
-from typing import Any, Optional
+import json
+from typing import Any, AsyncIterator, Optional
 import httpx
 from beanie import PydanticObjectId
 from src.config.settings import get_settings
@@ -334,6 +335,229 @@ async def _cohere_chat(model: str, api_key: str, messages: list, temperature: fl
         return "".join(c.get("text", "") for c in content if c.get("type") == "text").strip()
 
 
+# ── Streaming variants ──────────────────────────────────────────────────────
+#
+# Each provider here returns an `AsyncIterator[str]` of text deltas. Callers
+# (the SSE chat endpoint) accumulate the chunks for persistence and forward
+# them to the browser as they arrive — so users see words as they're generated
+# instead of waiting for the full paragraph.
+
+
+async def _ollama_chat_stream(
+    model: str, messages: list, temperature: float, max_tokens: int
+) -> AsyncIterator[str]:
+    settings = get_settings()
+    payload = {
+        "model": model,
+        "messages": messages,
+        "stream": True,
+        "options": {"temperature": temperature, "num_predict": max_tokens},
+    }
+    async with httpx.AsyncClient(timeout=120.0) as client:
+        async with client.stream("POST", f"{settings.OLLAMA_HOST}/api/chat", json=payload) as r:
+            r.raise_for_status()
+            async for line in r.aiter_lines():
+                if not line:
+                    continue
+                try:
+                    obj = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                chunk = (obj.get("message") or {}).get("content") or ""
+                if chunk:
+                    yield chunk
+                if obj.get("done"):
+                    break
+
+
+async def _iter_sse_data(raw_lines: AsyncIterator[str]) -> AsyncIterator[str]:
+    """Yield the JSON payload of each `data: ...` line (skipping comments and [DONE])."""
+    async for line in raw_lines:
+        if not line or line.startswith(":"):
+            continue
+        if line.startswith("data: "):
+            payload = line[6:].strip()
+            if payload == "[DONE]":
+                return
+            yield payload
+
+
+async def _openai_chat_stream(
+    model: str, api_key: str, messages: list, temperature: float, max_tokens: int
+) -> AsyncIterator[str]:
+    is_reasoning = model.startswith("gpt-5") or model.startswith("o1") or model.startswith("o3")
+    payload: dict = {
+        "model": model,
+        "messages": messages,
+        "max_completion_tokens": max_tokens,
+        "stream": True,
+    }
+    if is_reasoning:
+        payload["reasoning_effort"] = "low"
+    else:
+        payload["temperature"] = temperature
+    async with httpx.AsyncClient(timeout=120.0) as client:
+        async with client.stream(
+            "POST",
+            "https://api.openai.com/v1/chat/completions",
+            json=payload,
+            headers={"Authorization": f"Bearer {api_key}"},
+        ) as r:
+            r.raise_for_status()
+            async for payload_str in _iter_sse_data(r.aiter_lines()):
+                try:
+                    obj = json.loads(payload_str)
+                except json.JSONDecodeError:
+                    continue
+                choices = obj.get("choices") or []
+                if not choices:
+                    continue
+                delta = (choices[0].get("delta") or {}).get("content") or ""
+                if delta:
+                    yield delta
+
+
+async def _anthropic_chat_stream(
+    model: str, api_key: str, messages: list, temperature: float, max_tokens: int
+) -> AsyncIterator[str]:
+    system = ""
+    converted = []
+    for m in messages:
+        if m["role"] == "system":
+            system = m["content"]
+        else:
+            converted.append({"role": m["role"], "content": m["content"]})
+    payload: dict = {
+        "model": model,
+        "messages": converted,
+        "max_tokens": max_tokens,
+        "temperature": temperature,
+        "stream": True,
+    }
+    if system:
+        payload["system"] = system
+    async with httpx.AsyncClient(timeout=120.0) as client:
+        async with client.stream(
+            "POST",
+            "https://api.anthropic.com/v1/messages",
+            json=payload,
+            headers={
+                "x-api-key": api_key,
+                "anthropic-version": "2024-06-15",
+                "content-type": "application/json",
+            },
+        ) as r:
+            r.raise_for_status()
+            async for payload_str in _iter_sse_data(r.aiter_lines()):
+                try:
+                    obj = json.loads(payload_str)
+                except json.JSONDecodeError:
+                    continue
+                if obj.get("type") == "content_block_delta":
+                    delta = (obj.get("delta") or {})
+                    if delta.get("type") == "text_delta":
+                        text = delta.get("text") or ""
+                        if text:
+                            yield text
+
+
+async def _gemini_chat_stream(
+    model: str, api_key: str, messages: list, temperature: float, max_tokens: int
+) -> AsyncIterator[str]:
+    system = ""
+    contents = []
+    for m in messages:
+        if m["role"] == "system":
+            system = m["content"]
+            continue
+        role = "user" if m["role"] == "user" else "model"
+        contents.append({"role": role, "parts": [{"text": m["content"]}]})
+    payload: dict = {
+        "contents": contents,
+        "generationConfig": {"temperature": temperature, "maxOutputTokens": max_tokens},
+    }
+    if system:
+        payload["systemInstruction"] = {"parts": [{"text": system}]}
+    # `streamGenerateContent` with `?alt=sse` flips Gemini into SSE mode.
+    url = (
+        f"https://generativelanguage.googleapis.com/v1beta/models/"
+        f"{model}:streamGenerateContent?alt=sse&key={api_key}"
+    )
+    async with httpx.AsyncClient(timeout=120.0) as client:
+        async with client.stream("POST", url, json=payload) as r:
+            r.raise_for_status()
+            async for payload_str in _iter_sse_data(r.aiter_lines()):
+                try:
+                    obj = json.loads(payload_str)
+                except json.JSONDecodeError:
+                    continue
+                candidates = obj.get("candidates") or []
+                if not candidates:
+                    continue
+                parts = candidates[0].get("content", {}).get("parts", []) or []
+                text = "".join(p.get("text", "") for p in parts)
+                if text:
+                    yield text
+
+
+async def _cohere_chat_stream(
+    model: str, api_key: str, messages: list, temperature: float, max_tokens: int
+) -> AsyncIterator[str]:
+    payload = {
+        "model": model,
+        "messages": messages,
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+        "stream": True,
+    }
+    async with httpx.AsyncClient(timeout=120.0) as client:
+        async with client.stream(
+            "POST",
+            "https://api.cohere.com/v2/chat",
+            json=payload,
+            headers={"Authorization": f"Bearer {api_key}"},
+        ) as r:
+            r.raise_for_status()
+            async for payload_str in _iter_sse_data(r.aiter_lines()):
+                try:
+                    obj = json.loads(payload_str)
+                except json.JSONDecodeError:
+                    continue
+                if obj.get("type") == "content-delta":
+                    text = (
+                        obj.get("delta", {}).get("message", {}).get("content", {}).get("text")
+                        or ""
+                    )
+                    if text:
+                        yield text
+
+
+async def _dispatch_stream(
+    ai_settings: dict, messages: list, temperature: float, max_tokens: int
+) -> AsyncIterator[str]:
+    provider = ai_settings.get("provider") or "local"
+    model = ai_settings.get("model") or "gemma4:e2b"
+    api_key = ai_settings.get("api_key")
+
+    if provider == "local":
+        gen = _ollama_chat_stream(model, messages, temperature, max_tokens)
+    else:
+        if not api_key:
+            raise ValueError(f"Provider '{provider}' requires an API key")
+        if provider == "openai":
+            gen = _openai_chat_stream(model, api_key, messages, temperature, max_tokens)
+        elif provider == "anthropic":
+            gen = _anthropic_chat_stream(model, api_key, messages, temperature, max_tokens)
+        elif provider == "gemini":
+            gen = _gemini_chat_stream(model, api_key, messages, temperature, max_tokens)
+        elif provider == "cohere":
+            gen = _cohere_chat_stream(model, api_key, messages, temperature, max_tokens)
+        else:
+            raise ValueError(f"Unknown provider: {provider}")
+    async for chunk in gen:
+        yield chunk
+
+
 async def _dispatch(ai_settings: dict, messages: list, temperature: float, max_tokens: int) -> str:
     provider = ai_settings.get("provider") or "local"
     model = ai_settings.get("model") or "gemma4:e2b"
@@ -423,6 +647,36 @@ async def get_ai_chat_response(
       3. Run the chosen pipeline(s) in parallel.
       4. Build prompt, dispatch to provider.
     """
+    settings = ai_settings or {"provider": "local", "model": "gemma4:e2b", "api_key": None}
+    messages, query_vec = await build_chat_messages(
+        profile, user_type, history, message, settings, user_id, conversation_id
+    )
+
+    try:
+        text = await _dispatch(settings, messages, temperature=0.7, max_tokens=1000)
+        reply = text or "Sorry, I couldn't generate a reply."
+    except Exception as exc:
+        print(f"AI chat error ({settings.get('provider')}): {exc}")
+        reply = "I'm having trouble responding right now. Please try again."
+
+    return reply, query_vec
+
+
+async def build_chat_messages(
+    profile: Any,
+    user_type: str,
+    history: list,
+    message: str,
+    ai_settings: Optional[dict] = None,
+    user_id: Optional[PydanticObjectId] = None,
+    conversation_id: Optional[PydanticObjectId] = None,
+) -> tuple[list, list[float]]:
+    """Build the LLM message list (system + history + user turn) and return the
+    user-message embedding alongside it.
+
+    Shared by the non-streaming and streaming chat paths so RAG / routing /
+    prompt assembly stay in one place.
+    """
     runtime_settings = get_settings()
     settings = ai_settings or {"provider": "local", "model": "gemma4:e2b", "api_key": None}
     data = _extract_essential_fields(profile, user_type)
@@ -434,7 +688,6 @@ async def get_ai_chat_response(
     history_context = ""
     if query_vec:
         route = await route_query(message, settings)
-
         wants_knowledge = route in ("KNOWLEDGE", "BOTH")
         wants_memory = route in ("MEMORY", "BOTH") and user_id is not None
 
@@ -472,12 +725,12 @@ async def get_ai_chat_response(
         role = "user" if (h.get("role") or "").lower() == "user" else "assistant"
         messages.append({"role": role, "content": content})
     messages.append({"role": "user", "content": message})
+    return messages, query_vec
 
-    try:
-        text = await _dispatch(settings, messages, temperature=0.7, max_tokens=1000)
-        reply = text or "Sorry, I couldn't generate a reply."
-    except Exception as exc:
-        print(f"AI chat error ({settings.get('provider')}): {exc}")
-        reply = "I'm having trouble responding right now. Please try again."
 
-    return reply, query_vec
+def dispatch_chat_stream(
+    ai_settings: dict, messages: list, temperature: float = 0.7, max_tokens: int = 1000
+) -> AsyncIterator[str]:
+    """Public alias of the internal streaming dispatcher. Use with the messages
+    returned by `build_chat_messages` to stream a chat completion."""
+    return _dispatch_stream(ai_settings, messages, temperature, max_tokens)
