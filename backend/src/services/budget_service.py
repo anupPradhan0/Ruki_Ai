@@ -10,7 +10,10 @@ def _to_out(doc) -> BudgetOut:
 
 
 async def upsert_budget(user: User, data: BudgetUpsert) -> BudgetOut:
-    limits = {str(k): float(v) for k, v in data.limits.items() if v >= 0}
+    # `data.limits` keys are Category enum members (Pydantic coerces from str).
+    # `str(Category.FOOD)` returns "Category.FOOD", not "food" — must use `.value`
+    # so stored keys match what the frontend sends back when querying stats.
+    limits = {k.value: float(v) for k, v in data.limits.items() if v >= 0}
     doc = await budget_repository.upsert(user.id, data.month, limits)
     return _to_out(doc)
 

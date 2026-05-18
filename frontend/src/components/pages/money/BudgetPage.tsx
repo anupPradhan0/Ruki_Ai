@@ -1,10 +1,9 @@
 import { useEffect, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Loader2 } from "lucide-react"
-import { api, EXPENSE_CATEGORIES, type Category } from "@/lib/api"
+import { api, ApiError, EXPENSE_CATEGORIES, type Category } from "@/lib/api"
 import { currentMonthString, fmtINR } from "@/lib/utils"
 import { toast, toastError } from "@/lib/toast"
-import { ApiError } from "@/lib/api"
 
 export default function BudgetPage() {
   const qc = useQueryClient()
