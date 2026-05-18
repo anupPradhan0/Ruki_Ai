@@ -85,43 +85,91 @@ export default function ChatPage({ conversationId }: ChatPageProps = {}) {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" })
   }, [messages])
 
+  // Streaming state: while the assistant is responding, the last entry in
+  // `messages` is its in-progress turn that grows chunk by chunk.
+  const [streaming, setStreaming] = useState(false)
   const sendMutation = useMutation({
     mutationFn: async (msg: string) => {
       if (!userType) throw new Error("Missing user type")
-      // Snapshot the current history so the optimistic update and the API
-      // call use the same value — closure over `messages` directly would be
-      // a render behind by the time the request goes out.
       const historyAtSend = messages
-      const optimistic: ChatTurn[] = [...historyAtSend, { role: "user", content: msg }]
-      setMessages(optimistic)
-      const res = await api.chat(userType, msg, historyAtSend, conversationId)
-      return { res, optimistic }
+
+      // Optimistic: push the user turn + an empty assistant turn that we'll
+      // grow as deltas arrive.
+      setMessages([
+        ...historyAtSend,
+        { role: "user", content: msg },
+        { role: "assistant", content: "" },
+      ])
+      setStreaming(true)
+
+      let assembled = ""
+      let newConversationId: string | undefined
+
+      await api.chatStream(
+        userType,
+        msg,
+        historyAtSend,
+        conversationId,
+        {
+          onMeta: (m) => {
+            if (m.conversation_id) newConversationId = m.conversation_id
+          },
+          onDelta: (text) => {
+            assembled += text
+            setMessages((prev) => {
+              if (!prev.length) return prev
+              const next = prev.slice()
+              const last = next[next.length - 1]
+              if (last.role === "assistant") {
+                next[next.length - 1] = { ...last, content: assembled }
+              }
+              return next
+            })
+          },
+          onDone: (m) => {
+            // Server's final reply is authoritative — covers any chunk we
+            // might have missed on a flaky connection.
+            if (m.reply) {
+              assembled = m.reply
+              setMessages((prev) => {
+                if (!prev.length) return prev
+                const next = prev.slice()
+                const last = next[next.length - 1]
+                if (last.role === "assistant") {
+                  next[next.length - 1] = { ...last, content: m.reply ?? assembled }
+                }
+                return next
+              })
+            }
+          },
+        },
+      )
+
+      return { conversationId: newConversationId, reply: assembled, sentMsg: msg, historyAtSend }
     },
-    onSuccess: ({ res, optimistic }, sentMsg) => {
-      const finalMessages: ChatTurn[] = [
-        ...optimistic,
-        { role: "assistant", content: res.reply },
-      ]
-      setMessages(finalMessages)
+    onSuccess: ({ conversationId: newId, reply, sentMsg, historyAtSend }) => {
+      setStreaming(false)
       queryClient.invalidateQueries({ queryKey: ["conversations"] })
 
-      if (!conversationId && res.conversation_id) {
-        // Seed the new conversation's cache so the navigated-to ChatPage
-        // instance renders the messages we just sent without a flicker.
+      const finalMessages: ChatTurn[] = [
+        ...historyAtSend,
+        { role: "user", content: sentMsg },
+        { role: "assistant", content: reply },
+      ]
+
+      if (!conversationId && newId) {
         const now = new Date().toISOString()
         const seeded: ConversationDetail = {
-          id: res.conversation_id,
+          id: newId,
           title: sentMsg.slice(0, 60),
           user_type: userType ?? null,
           created_at: now,
           updated_at: now,
           messages: finalMessages,
         }
-        queryClient.setQueryData(["conversation", res.conversation_id], seeded)
-        navigate({ to: `/dashboard/chat/${res.conversation_id}` })
+        queryClient.setQueryData(["conversation", newId], seeded)
+        navigate({ to: `/dashboard/chat/${newId}` })
       } else if (conversationId) {
-        // Keep the open conversation's cache in sync so a navigate-away and
-        // back doesn't lose the latest exchange.
         queryClient.setQueryData<ConversationDetail | undefined>(
           ["conversation", conversationId],
           (prev) =>
@@ -132,10 +180,15 @@ export default function ChatPage({ conversationId }: ChatPageProps = {}) {
       }
     },
     onError: () => {
-      // Roll back the optimistic user message on failure.
-      setMessages((prev) =>
-        prev.length && prev[prev.length - 1].role === "user" ? prev.slice(0, -1) : prev,
-      )
+      setStreaming(false)
+      // Drop the empty assistant placeholder and the user message we pushed.
+      setMessages((prev) => {
+        if (prev.length >= 2 && prev[prev.length - 1].role === "assistant" && prev[prev.length - 2].role === "user") {
+          return prev.slice(0, -2)
+        }
+        if (prev.length && prev[prev.length - 1].role === "user") return prev.slice(0, -1)
+        return prev
+      })
     },
   })
 
@@ -243,13 +296,6 @@ export default function ChatPage({ conversationId }: ChatPageProps = {}) {
           {messages.map((m, i) => (
             <Message key={i} role={m.role} content={m.content} />
           ))}
-
-          {sendMutation.isPending && (
-            <div className="flex items-center gap-2 text-sm text-white/40">
-              <Loader2 size={14} className="animate-spin" />
-              <span>RukiAI is thinking...</span>
-            </div>
-          )}
 
           {sendMutation.isError && (
             <div className="text-sm text-red-400">{(sendMutation.error as Error).message}</div>
@@ -366,7 +412,14 @@ function Message({ role, content }: { role: "user" | "assistant"; content: strin
         <Sparkles size={14} />
       </div>
       <div className="flex-1 text-sm text-white/85 leading-relaxed space-y-2">
-        <MarkdownText text={content} />
+        {content ? (
+          <MarkdownText text={content} />
+        ) : (
+          <span className="inline-flex items-center gap-2 text-white/40">
+            <Loader2 size={14} className="animate-spin" />
+            <span>RukiAI is thinking...</span>
+          </span>
+        )}
       </div>
     </div>
   )

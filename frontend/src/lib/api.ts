@@ -8,6 +8,30 @@ export class ApiError extends Error {
   }
 }
 
+export interface ChatStreamHandlers {
+  onMeta?: (m: { conversation_id?: string }) => void
+  onDelta?: (text: string) => void
+  onDone?: (m: { reply?: string }) => void
+}
+
+function parseSseFrame(frame: string): { event: string | null; data: unknown } {
+  let event: string | null = null
+  let dataRaw = ""
+  for (const line of frame.split("\n")) {
+    if (line.startsWith("event: ")) event = line.slice(7).trim()
+    else if (line.startsWith("data: ")) dataRaw += line.slice(6)
+  }
+  let data: unknown = null
+  if (dataRaw) {
+    try {
+      data = JSON.parse(dataRaw)
+    } catch {
+      data = null
+    }
+  }
+  return { event, data }
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
     ...init,
@@ -508,6 +532,60 @@ export const api = {
         conversation_id: conversationId,
       }),
     }),
+
+  chatStream: async (
+    type: UserType,
+    message: string,
+    history: ChatTurn[],
+    conversationId: string | undefined,
+    handlers: ChatStreamHandlers,
+    signal?: AbortSignal,
+  ): Promise<void> => {
+    const res = await fetch(`${API_BASE}/chat/${type}/stream`, {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
+      body: JSON.stringify({
+        user_id: session.read()?.user_id,
+        message,
+        history,
+        conversation_id: conversationId,
+      }),
+      signal,
+    })
+
+    if (!res.ok || !res.body) {
+      const text = await res.text().catch(() => "")
+      throw new ApiError(res.status, text || `Request failed (${res.status})`)
+    }
+
+    const reader = res.body.getReader()
+    const decoder = new TextDecoder()
+    let buffer = ""
+
+    // SSE frames are separated by a blank line. Lines within a frame are
+    // either `event: <name>` or `data: <json>` — we accumulate until we hit
+    // \n\n, then dispatch.
+    while (true) {
+      const { value, done } = await reader.read()
+      if (done) break
+      buffer += decoder.decode(value, { stream: true })
+
+      let sepIndex: number
+      while ((sepIndex = buffer.indexOf("\n\n")) !== -1) {
+        const frame = buffer.slice(0, sepIndex)
+        buffer = buffer.slice(sepIndex + 2)
+        const { event, data } = parseSseFrame(frame)
+        if (!event) continue
+
+        if (event === "meta") handlers.onMeta?.(data as { conversation_id?: string })
+        else if (event === "delta") handlers.onDelta?.((data as { text?: string })?.text ?? "")
+        else if (event === "done") handlers.onDone?.(data as { reply?: string })
+        else if (event === "error")
+          throw new ApiError(500, (data as { message?: string })?.message ?? "Stream error")
+      }
+    }
+  },
 
   listConversations: () => request<ConversationSummary[]>("/conversations"),
 
