@@ -602,6 +602,37 @@ export const api = {
       method: "DELETE",
     }),
 
+  money: {
+    list: (params: TransactionListParams = {}) => {
+      const qs = new URLSearchParams()
+      Object.entries(params).forEach(([k, v]) => {
+        if (v !== undefined && v !== null && v !== "") qs.set(k, String(v))
+      })
+      const suffix = qs.toString() ? `?${qs.toString()}` : ""
+      return request<TransactionListResponse>(`/transactions${suffix}`)
+    },
+    create: (data: TransactionCreate) =>
+      request<Transaction>("/transactions", {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
+    update: (id: string, data: TransactionUpdate) =>
+      request<Transaction>(`/transactions/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(data),
+      }),
+    remove: (id: string) =>
+      request<null>(`/transactions/${id}`, { method: "DELETE" }),
+    stats: (month: string) =>
+      request<StatsResponse>(`/transactions/stats/${month}`),
+    getBudget: (month: string) => request<BudgetOut>(`/budgets/${month}`),
+    upsertBudget: (data: BudgetUpsert) =>
+      request<BudgetOut>("/budgets", {
+        method: "PUT",
+        body: JSON.stringify(data),
+      }),
+  },
+
   getAiProviders: () => request<AiProvidersResponse>("/ai-settings/providers"),
 
   getAiSettings: () => request<AiSettings>("/ai-settings"),
@@ -646,6 +677,116 @@ export interface QuizAnswer {
 export interface ChatTurn {
   role: "user" | "assistant"
   content: string
+}
+
+// ── Money types ──────────────────────────────────────────────────────────
+
+export type TxnType = "expense" | "income"
+export type Category =
+  | "food"
+  | "transport"
+  | "rent"
+  | "bills"
+  | "shopping"
+  | "entertainment"
+  | "health"
+  | "education"
+  | "savings"
+  | "salary"
+  | "other_income"
+  | "other"
+
+export const CATEGORIES: Category[] = [
+  "food",
+  "transport",
+  "rent",
+  "bills",
+  "shopping",
+  "entertainment",
+  "health",
+  "education",
+  "savings",
+  "salary",
+  "other_income",
+  "other",
+]
+
+export const EXPENSE_CATEGORIES: Category[] = [
+  "food",
+  "transport",
+  "rent",
+  "bills",
+  "shopping",
+  "entertainment",
+  "health",
+  "education",
+  "savings",
+  "other",
+]
+
+export const INCOME_CATEGORIES: Category[] = ["salary", "other_income"]
+
+export interface Transaction {
+  id: string
+  amount: number
+  type: TxnType
+  category: Category
+  merchant: string
+  note: string
+  occurred_at: string
+  currency: string
+}
+
+export interface TransactionCreate {
+  amount: number
+  type: TxnType
+  category: Category
+  merchant?: string
+  note?: string
+  occurred_at: string
+}
+
+export type TransactionUpdate = Partial<TransactionCreate>
+
+export interface TransactionListParams {
+  start?: string
+  end?: string
+  category?: Category | ""
+  type?: TxnType | ""
+  limit?: number
+  skip?: number
+}
+
+export interface TransactionListResponse {
+  items: Transaction[]
+  total_count: number
+}
+
+export interface DailyPoint {
+  date: string
+  expense: number
+  income: number
+}
+
+export interface StatsResponse {
+  month: string
+  by_category: Partial<Record<Category, number>>
+  daily: DailyPoint[]
+  total_expense: number
+  total_income: number
+  budget?: Partial<Record<Category, number>> | null
+  budget_used_pct?: Partial<Record<Category, number>> | null
+}
+
+export interface BudgetOut {
+  month: string
+  limits: Partial<Record<Category, number>>
+  currency: string
+}
+
+export interface BudgetUpsert {
+  month: string
+  limits: Partial<Record<Category, number>>
 }
 
 export interface ConversationSummary {

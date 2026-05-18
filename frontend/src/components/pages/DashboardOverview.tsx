@@ -32,6 +32,7 @@ import {
 } from "@/lib/api"
 import MarkdownText from "@/components/MarkdownText"
 import { toastError } from "@/lib/toast"
+import { currentMonthString, fmtINR, fmtMoney as fmtMoneyShared } from "@/lib/utils"
 
 const VALID_TYPES: UserType[] = ["student", "employed", "unemployed", "retired"]
 
@@ -68,6 +69,8 @@ function DashboardView({ data, userType }: { data: DashboardResponse; userType: 
 
   return (
     <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 sm:py-10 space-y-6">
+      <MoneyMiniCard />
+
       {validAdvice ? (
         <AIAdviceCard text={validAdvice} userType={userType} />
       ) : (
@@ -190,14 +193,7 @@ function StatGrid({ items }: { items: { label: string; value: React.ReactNode }[
   )
 }
 
-export function fmtMoney(n: number | undefined | null, c: string): string {
-  if (n === undefined || n === null) return "—"
-  try {
-    return new Intl.NumberFormat("en-IN", { style: "currency", currency: c, maximumFractionDigits: 0 }).format(n)
-  } catch {
-    return `${c} ${n}`
-  }
-}
+export const fmtMoney = fmtMoneyShared
 
 function titleCase(s: string | undefined | null): string {
   if (!s) return "—"
@@ -692,5 +688,51 @@ function RetiredSections({ p, c }: { p: RetiredProfile; c: string }) {
         />
       )}
     </>
+  )
+}
+
+function MoneyMiniCard() {
+  const month = currentMonthString()
+  const { data } = useQuery({
+    queryKey: ["money", "stats", month],
+    queryFn: () => api.money.stats(month),
+    retry: false,
+  })
+  if (!data) return null
+
+  const topCategory =
+    Object.entries(data.by_category).sort((a, b) => (b[1] ?? 0) - (a[1] ?? 0))[0]?.[0] ?? null
+  const net = data.total_income - data.total_expense
+
+  return (
+    <Link
+      to="/dashboard/money"
+      className="block bg-[#1A1A1A] border border-white/5 rounded-2xl p-5 hover:border-[#FFD700]/30 transition-colors"
+    >
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2 text-white/60 text-sm">
+          <Wallet size={16} />
+          This month
+        </div>
+        <span className="text-xs text-white/30">→</span>
+      </div>
+      <div className="flex flex-wrap items-baseline gap-x-5 gap-y-1 text-sm">
+        <span className="text-white/40">
+          Spent <span className="text-white font-medium">{fmtINR(data.total_expense)}</span>
+        </span>
+        <span className="text-white/40">
+          Net{" "}
+          <span className={net >= 0 ? "text-emerald-400 font-medium" : "text-red-400 font-medium"}>
+            {net >= 0 ? "+" : ""}
+            {fmtINR(net)}
+          </span>
+        </span>
+        {topCategory && (
+          <span className="text-white/40">
+            Top <span className="text-white font-medium capitalize">{topCategory.replace("_", " ")}</span>
+          </span>
+        )}
+      </div>
+    </Link>
   )
 }

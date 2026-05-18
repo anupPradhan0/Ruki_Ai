@@ -128,3 +128,23 @@ class GuestSummaryFrequency(str, Enum):
     WEEKLY = "weekly"
     MONTHLY = "monthly"
     NEVER = "never"
+
+
+class TxnType(str, Enum):
+    EXPENSE = "expense"
+    INCOME = "income"
+
+
+class Category(str, Enum):
+    FOOD = "food"
+    TRANSPORT = "transport"
+    RENT = "rent"
+    BILLS = "bills"
+    SHOPPING = "shopping"
+    ENTERTAINMENT = "entertainment"
+    HEALTH = "health"
+    EDUCATION = "education"
+    SAVINGS = "savings"
+    SALARY = "salary"
+    OTHER_INCOME = "other_income"
+    OTHER = "other"

@@ -15,6 +15,8 @@ from src.routers.quiz_router import router as quiz_router
 from src.routers.chat_router import router as chat_router
 from src.routers.conversation_router import router as conversation_router
 from src.routers.ai_settings_router import router as ai_settings_router
+from src.routers.transaction_router import router as transaction_router
+from src.routers.budget_router import router as budget_router
 
 
 @asynccontextmanager
@@ -65,6 +67,8 @@ app.include_router(quiz_router)
 app.include_router(chat_router)
 app.include_router(conversation_router)
 app.include_router(ai_settings_router)
+app.include_router(transaction_router)
+app.include_router(budget_router)
 
 
 if __name__ == "__main__":

@@ -14,6 +14,8 @@ from src.models.knowledge_model import KnowledgeChunk
 from src.models.chat_message_model import ChatMessage
 from src.models.conversation_model import Conversation
 from src.models.verification_token_model import VerificationToken
+from src.models.transaction_model import Transaction
+from src.models.budget_model import Budget
 
 
 async def init_db() -> None:
@@ -34,5 +36,7 @@ async def init_db() -> None:
             ChatMessage,
             Conversation,
             VerificationToken,
+            Transaction,
+            Budget,
         ],
     )

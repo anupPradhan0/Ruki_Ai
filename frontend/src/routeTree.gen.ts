@@ -15,6 +15,7 @@ import { Route as AuthRouteImport } from './routes/_auth'
 import { Route as DashboardIndexRouteImport } from './routes/dashboard/index'
 import { Route as LayoutIndexRouteImport } from './routes/_layout/index'
 import { Route as DashboardSettingsRouteImport } from './routes/dashboard/settings'
+import { Route as DashboardMoneyRouteImport } from './routes/dashboard/money'
 import { Route as DashboardChatRouteImport } from './routes/dashboard/chat'
 import { Route as LayoutHowItWorksRouteImport } from './routes/_layout/how-it-works'
 import { Route as LayoutFeaturesRouteImport } from './routes/_layout/features'
@@ -26,7 +27,10 @@ import { Route as AuthQuizRouteImport } from './routes/_auth/quiz'
 import { Route as AuthOnboardingRouteImport } from './routes/_auth/onboarding'
 import { Route as AuthLoginRouteImport } from './routes/_auth/login'
 import { Route as AuthForgotPasswordRouteImport } from './routes/_auth/forgot-password'
+import { Route as DashboardMoneyIndexRouteImport } from './routes/dashboard/money.index'
 import { Route as DashboardChatIndexRouteImport } from './routes/dashboard/chat.index'
+import { Route as DashboardMoneyTransactionsRouteImport } from './routes/dashboard/money.transactions'
+import { Route as DashboardMoneyBudgetRouteImport } from './routes/dashboard/money.budget'
 import { Route as DashboardChatConversationIdRouteImport } from './routes/dashboard/chat.$conversationId'
 
 const DashboardRoute = DashboardRouteImport.update({
@@ -55,6 +59,11 @@ const LayoutIndexRoute = LayoutIndexRouteImport.update({
 const DashboardSettingsRoute = DashboardSettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
+  getParentRoute: () => DashboardRoute,
+} as any)
+const DashboardMoneyRoute = DashboardMoneyRouteImport.update({
+  id: '/money',
+  path: '/money',
   getParentRoute: () => DashboardRoute,
 } as any)
 const DashboardChatRoute = DashboardChatRouteImport.update({
@@ -112,10 +121,26 @@ const AuthForgotPasswordRoute = AuthForgotPasswordRouteImport.update({
   path: '/forgot-password',
   getParentRoute: () => AuthRoute,
 } as any)
+const DashboardMoneyIndexRoute = DashboardMoneyIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => DashboardMoneyRoute,
+} as any)
 const DashboardChatIndexRoute = DashboardChatIndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => DashboardChatRoute,
+} as any)
+const DashboardMoneyTransactionsRoute =
+  DashboardMoneyTransactionsRouteImport.update({
+    id: '/transactions',
+    path: '/transactions',
+    getParentRoute: () => DashboardMoneyRoute,
+  } as any)
+const DashboardMoneyBudgetRoute = DashboardMoneyBudgetRouteImport.update({
+  id: '/budget',
+  path: '/budget',
+  getParentRoute: () => DashboardMoneyRoute,
 } as any)
 const DashboardChatConversationIdRoute =
   DashboardChatConversationIdRouteImport.update({
@@ -138,10 +163,14 @@ export interface FileRoutesByFullPath {
   '/features': typeof LayoutFeaturesRoute
   '/how-it-works': typeof LayoutHowItWorksRoute
   '/dashboard/chat': typeof DashboardChatRouteWithChildren
+  '/dashboard/money': typeof DashboardMoneyRouteWithChildren
   '/dashboard/settings': typeof DashboardSettingsRoute
   '/dashboard/': typeof DashboardIndexRoute
   '/dashboard/chat/$conversationId': typeof DashboardChatConversationIdRoute
+  '/dashboard/money/budget': typeof DashboardMoneyBudgetRoute
+  '/dashboard/money/transactions': typeof DashboardMoneyTransactionsRoute
   '/dashboard/chat/': typeof DashboardChatIndexRoute
+  '/dashboard/money/': typeof DashboardMoneyIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof LayoutIndexRoute
@@ -158,7 +187,10 @@ export interface FileRoutesByTo {
   '/dashboard/settings': typeof DashboardSettingsRoute
   '/dashboard': typeof DashboardIndexRoute
   '/dashboard/chat/$conversationId': typeof DashboardChatConversationIdRoute
+  '/dashboard/money/budget': typeof DashboardMoneyBudgetRoute
+  '/dashboard/money/transactions': typeof DashboardMoneyTransactionsRoute
   '/dashboard/chat': typeof DashboardChatIndexRoute
+  '/dashboard/money': typeof DashboardMoneyIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -176,11 +208,15 @@ export interface FileRoutesById {
   '/_layout/features': typeof LayoutFeaturesRoute
   '/_layout/how-it-works': typeof LayoutHowItWorksRoute
   '/dashboard/chat': typeof DashboardChatRouteWithChildren
+  '/dashboard/money': typeof DashboardMoneyRouteWithChildren
   '/dashboard/settings': typeof DashboardSettingsRoute
   '/_layout/': typeof LayoutIndexRoute
   '/dashboard/': typeof DashboardIndexRoute
   '/dashboard/chat/$conversationId': typeof DashboardChatConversationIdRoute
+  '/dashboard/money/budget': typeof DashboardMoneyBudgetRoute
+  '/dashboard/money/transactions': typeof DashboardMoneyTransactionsRoute
   '/dashboard/chat/': typeof DashboardChatIndexRoute
+  '/dashboard/money/': typeof DashboardMoneyIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -198,10 +234,14 @@ export interface FileRouteTypes {
     | '/features'
     | '/how-it-works'
     | '/dashboard/chat'
+    | '/dashboard/money'
     | '/dashboard/settings'
     | '/dashboard/'
     | '/dashboard/chat/$conversationId'
+    | '/dashboard/money/budget'
+    | '/dashboard/money/transactions'
     | '/dashboard/chat/'
+    | '/dashboard/money/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -218,7 +258,10 @@ export interface FileRouteTypes {
     | '/dashboard/settings'
     | '/dashboard'
     | '/dashboard/chat/$conversationId'
+    | '/dashboard/money/budget'
+    | '/dashboard/money/transactions'
     | '/dashboard/chat'
+    | '/dashboard/money'
   id:
     | '__root__'
     | '/_auth'
@@ -235,11 +278,15 @@ export interface FileRouteTypes {
     | '/_layout/features'
     | '/_layout/how-it-works'
     | '/dashboard/chat'
+    | '/dashboard/money'
     | '/dashboard/settings'
     | '/_layout/'
     | '/dashboard/'
     | '/dashboard/chat/$conversationId'
+    | '/dashboard/money/budget'
+    | '/dashboard/money/transactions'
     | '/dashboard/chat/'
+    | '/dashboard/money/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -290,6 +337,13 @@ declare module '@tanstack/react-router' {
       path: '/settings'
       fullPath: '/dashboard/settings'
       preLoaderRoute: typeof DashboardSettingsRouteImport
+      parentRoute: typeof DashboardRoute
+    }
+    '/dashboard/money': {
+      id: '/dashboard/money'
+      path: '/money'
+      fullPath: '/dashboard/money'
+      preLoaderRoute: typeof DashboardMoneyRouteImport
       parentRoute: typeof DashboardRoute
     }
     '/dashboard/chat': {
@@ -369,12 +423,33 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthForgotPasswordRouteImport
       parentRoute: typeof AuthRoute
     }
+    '/dashboard/money/': {
+      id: '/dashboard/money/'
+      path: '/'
+      fullPath: '/dashboard/money/'
+      preLoaderRoute: typeof DashboardMoneyIndexRouteImport
+      parentRoute: typeof DashboardMoneyRoute
+    }
     '/dashboard/chat/': {
       id: '/dashboard/chat/'
       path: '/'
       fullPath: '/dashboard/chat/'
       preLoaderRoute: typeof DashboardChatIndexRouteImport
       parentRoute: typeof DashboardChatRoute
+    }
+    '/dashboard/money/transactions': {
+      id: '/dashboard/money/transactions'
+      path: '/transactions'
+      fullPath: '/dashboard/money/transactions'
+      preLoaderRoute: typeof DashboardMoneyTransactionsRouteImport
+      parentRoute: typeof DashboardMoneyRoute
+    }
+    '/dashboard/money/budget': {
+      id: '/dashboard/money/budget'
+      path: '/budget'
+      fullPath: '/dashboard/money/budget'
+      preLoaderRoute: typeof DashboardMoneyBudgetRouteImport
+      parentRoute: typeof DashboardMoneyRoute
     }
     '/dashboard/chat/$conversationId': {
       id: '/dashboard/chat/$conversationId'
@@ -439,14 +514,32 @@ const DashboardChatRouteWithChildren = DashboardChatRoute._addFileChildren(
   DashboardChatRouteChildren,
 )
 
+interface DashboardMoneyRouteChildren {
+  DashboardMoneyBudgetRoute: typeof DashboardMoneyBudgetRoute
+  DashboardMoneyTransactionsRoute: typeof DashboardMoneyTransactionsRoute
+  DashboardMoneyIndexRoute: typeof DashboardMoneyIndexRoute
+}
+
+const DashboardMoneyRouteChildren: DashboardMoneyRouteChildren = {
+  DashboardMoneyBudgetRoute: DashboardMoneyBudgetRoute,
+  DashboardMoneyTransactionsRoute: DashboardMoneyTransactionsRoute,
+  DashboardMoneyIndexRoute: DashboardMoneyIndexRoute,
+}
+
+const DashboardMoneyRouteWithChildren = DashboardMoneyRoute._addFileChildren(
+  DashboardMoneyRouteChildren,
+)
+
 interface DashboardRouteChildren {
   DashboardChatRoute: typeof DashboardChatRouteWithChildren
+  DashboardMoneyRoute: typeof DashboardMoneyRouteWithChildren
   DashboardSettingsRoute: typeof DashboardSettingsRoute
   DashboardIndexRoute: typeof DashboardIndexRoute
 }
 
 const DashboardRouteChildren: DashboardRouteChildren = {
   DashboardChatRoute: DashboardChatRouteWithChildren,
+  DashboardMoneyRoute: DashboardMoneyRouteWithChildren,
   DashboardSettingsRoute: DashboardSettingsRoute,
   DashboardIndexRoute: DashboardIndexRoute,
 }

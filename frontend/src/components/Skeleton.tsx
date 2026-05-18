@@ -180,6 +180,43 @@ export function ConversationListSkeleton({ rows = 5 }: { rows?: number }) {
   )
 }
 
+export function MoneyOverviewSkeleton() {
+  return (
+    <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 sm:py-10 space-y-6">
+      <SkeletonStatGrid count={3} />
+      <div className="grid lg:grid-cols-2 gap-4">
+        <section className="bg-[#1A1A1A] border border-white/5 rounded-2xl p-6">
+          <Bar height={14} width="40%" className="mb-4" />
+          <Bar height={180} className="rounded-xl" />
+        </section>
+        <section className="bg-[#1A1A1A] border border-white/5 rounded-2xl p-6">
+          <Bar height={14} width="40%" className="mb-4" />
+          <Bar height={180} className="rounded-xl" />
+        </section>
+      </div>
+    </div>
+  )
+}
+
+export function TxnListSkeleton({ rows = 6 }: { rows?: number }) {
+  return (
+    <div className="space-y-2">
+      {Array.from({ length: rows }).map((_, i) => (
+        <div
+          key={i}
+          className="flex items-center justify-between bg-[#111] border border-white/5 rounded-xl px-4 py-3"
+        >
+          <div className="flex-1 space-y-2">
+            <Bar height={12} width="35%" />
+            <Bar height={10} width="20%" />
+          </div>
+          <Bar height={14} width="80px" />
+        </div>
+      ))}
+    </div>
+  )
+}
+
 export function ChatHistorySkeleton() {
   // Alternating user / assistant bubbles to match the eventual layout.
   return (
