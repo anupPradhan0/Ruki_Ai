@@ -18,11 +18,7 @@ RESET_TTL_HOURS = 1
 
 
 def _frontend_base() -> str:
-    base = (get_settings().FRONTEND_URL or "").rstrip("/")
-    if not base:
-        # Dev fallback — must match the Vite dev server.
-        base = "http://localhost:5173"
-    return base
+    return get_settings().FRONTEND_URL.rstrip("/")
 
 
 async def _invalidate_outstanding(user_id, purpose: str) -> None:

@@ -7,6 +7,7 @@ from src.models.user_model import User
 from src.models.guest_model import Guest
 from src.utils.password_utils import hash_password, verify_password
 from src.utils.jwt_utils import create_token
+from src.services.password_service import issue_email_verification
 
 
 async def register_user(data: SignupRequest) -> tuple[User, str]:
@@ -25,9 +26,8 @@ async def register_user(data: SignupRequest) -> tuple[User, str]:
         user_type=data.user_type,
     )
 
-    # Fire-and-forget verification email. Import locally to avoid a cycle.
+    # Verification email is best-effort — failures here shouldn't block signup.
     try:
-        from src.services.password_service import issue_email_verification
         await issue_email_verification(user)
     except Exception as exc:
         print(f"Could not send verification email: {exc}")

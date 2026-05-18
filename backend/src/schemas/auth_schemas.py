@@ -45,11 +45,6 @@ class ChangePasswordRequest(BaseModel):
     new_password: str = Field(min_length=6, max_length=128)
 
 
-class ResendVerificationRequest(BaseModel):
-    # Auth required, so we already know the user. Kept empty for future use.
-    model_config = ConfigDict(str_strip_whitespace=True)
-
-
 class MessageResponse(BaseModel):
     message: str
 

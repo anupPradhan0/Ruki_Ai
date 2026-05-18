@@ -1,5 +1,5 @@
 import { Link, useSearch } from "@tanstack/react-router"
-import { useEffect } from "react"
+import { useEffect, useRef } from "react"
 import { useMutation } from "@tanstack/react-query"
 import { Loader2, MailCheck, AlertCircle } from "lucide-react"
 import { api } from "@/lib/api"
@@ -12,8 +12,13 @@ export default function VerifyEmailPage() {
     mutationFn: (t: string) => api.verifyEmail(t),
   })
 
+  // StrictMode double-invokes effects in dev; without this guard the second
+  // call hits a token that's already marked used and surfaces a fake error.
+  const fired = useRef(false)
   useEffect(() => {
-    if (token) verify.mutate(token)
+    if (!token || fired.current) return
+    fired.current = true
+    verify.mutate(token)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token])
 

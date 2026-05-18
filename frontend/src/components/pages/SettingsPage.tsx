@@ -15,6 +15,7 @@ import {
   LogOut,
 } from "lucide-react"
 import { api, session, type AiProvider, type UserType } from "@/lib/api"
+import { AuthInput } from "@/components/auth/AuthBits"
 
 type Tab = "info" | "ai" | "security"
 
@@ -398,9 +399,7 @@ function SecurityTab() {
       setCurrent("")
       setNext("")
       setConfirm("")
-      setTimeout(() => setPwSaved(false), 2200)
       // Password change bumped token_version on the server; our cookie is now stale.
-      // Send the user back to login.
       setTimeout(() => {
         session.clear()
         window.location.href = "/login"
@@ -409,9 +408,14 @@ function SecurityTab() {
     onError: (e) => setPwError((e as Error).message),
   })
 
+  const [resentFlash, setResentFlash] = useState(false)
   const resend = useMutation({
     mutationFn: () => api.resendVerification(),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["me"] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["me"] })
+      setResentFlash(true)
+      setTimeout(() => setResentFlash(false), 3000)
+    },
   })
 
   const logoutAll = useMutation({
@@ -467,10 +471,10 @@ function SecurityTab() {
             <button
               type="button"
               onClick={() => resend.mutate()}
-              disabled={resend.isPending || resend.isSuccess}
+              disabled={resend.isPending}
               className="shrink-0 px-3.5 py-2 rounded-lg border border-white/10 text-xs text-white/80 hover:border-[#FFD700]/40 hover:text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {resend.isPending ? "Sending..." : resend.isSuccess ? "Sent ✓" : "Resend"}
+              {resend.isPending ? "Sending..." : resentFlash ? "Sent ✓" : "Resend"}
             </button>
           )}
         </div>
@@ -480,9 +484,9 @@ function SecurityTab() {
       <section className="space-y-3">
         <Label>Change password</Label>
         <form onSubmit={onChangeSubmit} className="bg-[#111] border border-white/5 rounded-xl p-5 space-y-4">
-          <PasswordField label="Current password" value={current} onChange={setCurrent} />
-          <PasswordField label="New password" value={next} onChange={setNext} hint="(min 6 chars)" />
-          <PasswordField label="Confirm new password" value={confirm} onChange={setConfirm} />
+          <AuthInput label="Current password" type="password" value={current} onChange={setCurrent} />
+          <AuthInput label="New password" type="password" hint="(min 6 chars)" value={next} onChange={setNext} minLength={6} />
+          <AuthInput label="Confirm new password" type="password" value={confirm} onChange={setConfirm} minLength={6} />
 
           {pwError && (
             <div className="text-[12px] text-red-400">{pwError}</div>
@@ -539,29 +543,3 @@ function SecurityTab() {
   )
 }
 
-function PasswordField({
-  label,
-  value,
-  onChange,
-  hint,
-}: {
-  label: string
-  value: string
-  onChange: (v: string) => void
-  hint?: string
-}) {
-  return (
-    <div>
-      <label className="block text-[11px] uppercase tracking-wide text-white/50 mb-1.5">
-        {label}
-        {hint && <span className="text-white/30 normal-case tracking-normal ml-1">{hint}</span>}
-      </label>
-      <input
-        type="password"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="w-full bg-[#0F0F0F] border border-white/10 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-[#FFD700]/40"
-      />
-    </div>
-  )
-}
