@@ -1,5 +1,4 @@
-from calendar import monthrange
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional
 
 from beanie import PydanticObjectId
@@ -19,13 +18,19 @@ from src.schemas.transaction_schemas import (
 
 
 def _month_bounds(month: str) -> tuple[datetime, datetime]:
-    """Parse 'YYYY-MM' into [start, end) datetime range. Raises 400 on bad input."""
+    """Parse 'YYYY-MM' into a half-open [start, end) datetime range.
+
+    `end` is the first instant of the *next* month so the repo query can use
+    `$lt: end` without missing transactions that land in the last microsecond
+    of the month.
+    """
     try:
         year, mo = month.split("-")
         y, m = int(year), int(mo)
-        last = monthrange(y, m)[1]
+        if not (1 <= m <= 12):
+            raise ValueError("month out of range")
         start = datetime(y, m, 1)
-        end = datetime(y, m, last, 23, 59, 59, 999000)
+        end = datetime(y + 1, 1, 1) if m == 12 else datetime(y, m + 1, 1)
         return start, end
     except (ValueError, AttributeError):
         raise HTTPException(status_code=400, detail="Invalid month format (expected YYYY-MM)")
@@ -148,8 +153,6 @@ async def get_month_stats(user: User, month: str) -> StatsResponse:
 
 async def recent_spend_summary(user_id: PydanticObjectId, days: int = 30) -> dict:
     """Compact summary used by ai_utils to inject user spending into prompts."""
-    from datetime import timedelta
-
     end = datetime.utcnow()
     start = end - timedelta(days=days)
     agg = await transaction_repository.aggregate_month(user_id, start, end)
